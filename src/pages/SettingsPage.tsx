@@ -1,5 +1,6 @@
 import { PageHeader } from "@/components/layout/PageHeader";
 import { AssetTagTab } from "@/components/settings/AssetTagTab";
+import { BackupTab } from "@/components/settings/BackupTab";
 import { ConnectionTab } from "@/components/settings/ConnectionTab";
 import { LabelDefaultsTab } from "@/components/settings/LabelDefaultsTab";
 import { SchemaTab } from "@/components/settings/SchemaTab";
@@ -19,6 +20,7 @@ export function SettingsPage() {
           <TabsTrigger value="assetTag">Asset Tag</TabsTrigger>
           <TabsTrigger value="status">Status Colours</TabsTrigger>
           <TabsTrigger value="labels">Label Defaults</TabsTrigger>
+          <TabsTrigger value="backup">Import / Export</TabsTrigger>
         </TabsList>
         <TabsContent value="connection">
           <ConnectionTab />
@@ -34,6 +36,9 @@ export function SettingsPage() {
         </TabsContent>
         <TabsContent value="labels">
           <LabelDefaultsTab />
+        </TabsContent>
+        <TabsContent value="backup">
+          <BackupTab />
         </TabsContent>
       </Tabs>
     </div>

@@ -35,6 +35,30 @@ pub fn save_pdf(path: String, data_b64: String) -> AppResult<()> {
     Ok(())
 }
 
+const MAX_JSON_BYTES: u64 = 5 * 1024 * 1024;
+
+pub(crate) fn json_path(path: String) -> AppResult<PathBuf> {
+    let path = PathBuf::from(path);
+    let is_json = path
+        .extension()
+        .and_then(|e| e.to_str())
+        .is_some_and(|e| e.eq_ignore_ascii_case("json"));
+    if is_json {
+        Ok(path)
+    } else {
+        Err(AppError::Invalid("Only .json files can be used here".into()))
+    }
+}
+
+/// Reads a settings export from a user-chosen path (from the open dialog).
+pub(crate) fn read_json_text(path: String) -> AppResult<String> {
+    let path = json_path(path)?;
+    if std::fs::metadata(&path)?.len() > MAX_JSON_BYTES {
+        return Err(AppError::Invalid("File is too large to be a settings export".into()));
+    }
+    Ok(std::fs::read_to_string(&path)?)
+}
+
 /// Writes a PDF to the temp folder and opens it in the system viewer for printing.
 #[tauri::command]
 pub fn open_pdf(file_name: String, data_b64: String) -> AppResult<()> {

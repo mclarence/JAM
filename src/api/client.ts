@@ -8,6 +8,8 @@ export type ApiErrorKind =
   | "network"
   | "certificate"
   | "proxyAuth"
+  | "passphraseRequired"
+  | "passphraseInvalid"
   | "keyring"
   | "invalid"
   | "io"
@@ -84,6 +86,22 @@ export const networkApi = {
   /** Resolves with the number of session cookies captured. */
   signInFinish: (siteUrl: string) => call<number>("proxy_sign_in_finish", { siteUrl }),
   signInCancel: () => call<void>("proxy_sign_in_cancel"),
+};
+
+export interface ImportPreview {
+  /** Settings JSON with any connection data removed; the token never reaches the UI. */
+  settings: string;
+  encrypted: boolean;
+  connection: { siteUrl: string; authType: AuthType; email: string } | null;
+}
+
+export const backupApi = {
+  export: (req: { path: string; settings: string; includeConnection: boolean; passphrase?: string }) =>
+    call<void>("export_settings", { request: req }),
+  read: (path: string, passphrase?: string) =>
+    call<ImportPreview>("import_settings_read", { path, passphrase: passphrase ?? null }),
+  importConnection: (path: string, passphrase?: string) =>
+    call<ConnectionInfo>("import_settings_connection", { path, passphrase: passphrase ?? null }),
 };
 
 export const fileApi = {

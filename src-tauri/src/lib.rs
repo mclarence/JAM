@@ -1,4 +1,6 @@
+mod backup;
 mod connection;
+mod crypto;
 mod error;
 mod files;
 mod http;
@@ -22,6 +24,9 @@ pub fn run() {
             proxy::proxy_sign_in_finish,
             proxy::proxy_sign_in_cancel,
             files::save_pdf,
+            backup::export_settings,
+            backup::import_settings_read,
+            backup::import_settings_connection,
             files::open_pdf,
         ])
         .run(tauri::generate_context!())

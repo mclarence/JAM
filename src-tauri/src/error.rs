@@ -13,6 +13,10 @@ pub enum AppError {
     Certificate(String),
     #[error("{0}")]
     ProxyAuth(String),
+    #[error("This file is encrypted. Enter the passphrase it was exported with.")]
+    PassphraseRequired,
+    #[error("Incorrect passphrase, or the file is damaged.")]
+    PassphraseInvalid,
     #[error("Secure storage error: {0}")]
     Keyring(String),
     #[error("{0}")]
@@ -30,6 +34,8 @@ impl AppError {
             AppError::Network(_) => "network",
             AppError::Certificate(_) => "certificate",
             AppError::ProxyAuth(_) => "proxyAuth",
+            AppError::PassphraseRequired => "passphraseRequired",
+            AppError::PassphraseInvalid => "passphraseInvalid",
             AppError::Keyring(_) => "keyring",
             AppError::Invalid(_) => "invalid",
             AppError::Io(_) => "io",

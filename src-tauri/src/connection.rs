@@ -140,7 +140,7 @@ impl AppState {
             .ok_or(AppError::NotConnected)
     }
 
-    fn set(&self, value: Option<StoredConnection>) {
+    pub(crate) fn set(&self, value: Option<StoredConnection>) {
         if let Ok(mut guard) = self.connection.write() {
             *guard = value;
         }
@@ -206,7 +206,7 @@ fn save_network_options(opts: &NetworkOptions) -> AppResult<()> {
     Ok(())
 }
 
-fn save_to_keyring(conn: &StoredConnection) -> AppResult<()> {
+pub(crate) fn save_to_keyring(conn: &StoredConnection) -> AppResult<()> {
     let entry = keyring::Entry::new(KEYRING_SERVICE, KEYRING_USER)?;
     let json = serde_json::to_string(conn).map_err(|e| AppError::Invalid(e.to_string()))?;
     entry.set_password(&json)?;
@@ -246,6 +246,34 @@ async fn get_json(client: &reqwest::Client, url: &str, auth: Option<&str>) -> Ap
         return Err(AppError::Http { status: status.as_u16(), message });
     }
     Ok(res.json::<Value>().await?)
+}
+
+/// Spec server URL first; classic (unscoped) API tokens are only accepted on the legacy gateway path.
+fn api_base_candidates(cloud_id: &str, workspace_id: &str) -> [String; 2] {
+    [
+        format!("https://api.atlassian.com/ex/jira/{cloud_id}/jsm/assets/workspace/{workspace_id}/v1"),
+        format!("https://api.atlassian.com/jsm/assets/workspace/{workspace_id}/v1"),
+    ]
+}
+
+impl StoredConnection {
+    /// Checks a connection read from a file so a crafted export cannot send the token to another host.
+    pub fn validate_imported(mut self) -> AppResult<Self> {
+        let bad = |what: &str| AppError::Invalid(format!("The imported connection is invalid: {what}."));
+        self.site_url = normalize_site(&self.site_url)?;
+        self.email = self.email.trim().to_string();
+        let id_ok = |s: &str| !s.is_empty() && s.len() <= 64 && s.chars().all(|c| c.is_ascii_alphanumeric() || c == '-');
+        if !id_ok(&self.cloud_id) || !id_ok(&self.workspace_id) {
+            return Err(bad("unexpected workspace identifiers"));
+        }
+        if !api_base_candidates(&self.cloud_id, &self.workspace_id).contains(&self.api_base) {
+            return Err(bad("unexpected API address"));
+        }
+        if self.secret.trim().is_empty() || (self.auth_type == AuthType::Basic && self.email.is_empty()) {
+            return Err(bad("missing credentials"));
+        }
+        Ok(self)
+    }
 }
 
 async fn discover(client: &reqwest::Client, input: &ConnectInput, secret: &str) -> AppResult<StoredConnection> {
@@ -289,11 +317,7 @@ async fn discover(client: &reqwest::Client, input: &ConnectInput, secret: &str) 
         .ok_or_else(|| AppError::Invalid("No Assets workspace found for this site".into()))?
         .to_string();
 
-    // Spec server URL first; classic (unscoped) API tokens are only accepted on the legacy gateway path.
-    let candidates = [
-        format!("https://api.atlassian.com/ex/jira/{cloud_id}/jsm/assets/workspace/{workspace_id}/v1"),
-        format!("https://api.atlassian.com/jsm/assets/workspace/{workspace_id}/v1"),
-    ];
+    let candidates = api_base_candidates(&cloud_id, &workspace_id);
     let mut last_err = None;
     for base in candidates {
         match get_json(client, &format!("{base}/objectschema/list?maxResults=1"), Some(&auth)).await {
