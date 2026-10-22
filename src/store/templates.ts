@@ -1,6 +1,7 @@
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
 import { newTemplate, type LabelElement, type LabelTemplate } from "@/components/labels/model";
+import { foldBaseStyle } from "@/components/labels/richText";
 import { fileStorage } from "./persist";
 
 interface TemplatesState {
@@ -78,7 +79,18 @@ export const useTemplates = create<TemplatesState>()(
     {
       name: "templates",
       storage: fileStorage("templates.json"),
-      version: 1,
+      version: 2,
+      // v2: whole-element bold/italic became markup in the text content.
+      migrate: (state) => {
+        const s = state as Pick<TemplatesState, "templates" | "defaultTemplateId">;
+        return {
+          ...s,
+          templates: (s.templates ?? []).map((t) => ({
+            ...t,
+            elements: t.elements.map((e) => (e.kind === "text" ? foldBaseStyle(e) : e)),
+          })),
+        };
+      },
       partialize: (s) => ({ templates: s.templates, defaultTemplateId: s.defaultTemplateId }),
     },
   ),

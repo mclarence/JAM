@@ -49,7 +49,6 @@ export function SchemaTab() {
                 .map((t) => (
                   <SelectItem key={t.id} value={t.id}>
                     {t.name}
-                    {t.objectCount !== undefined && <span className="text-muted-foreground"> · {t.objectCount}</span>}
                   </SelectItem>
                 ))}
             </SelectContent>

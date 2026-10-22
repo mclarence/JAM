@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   DndContext,
   DragOverlay,
@@ -18,25 +18,33 @@ import {
   Barcode,
   Bold,
   Braces,
+  ChevronsUpDown,
   Grid3x3,
   Italic,
+  Loader2,
   QrCode,
+  Strikethrough,
   Trash2,
   Type,
+  Underline,
   ZoomIn,
   ZoomOut,
 } from "lucide-react";
 import { assetsApi } from "@/api/assets";
-import { useAttributes, useConnection } from "@/api/queries";
+import { useAttributes, useConnection, useReferenceSearch } from "@/api/queries";
+import type { AssetObject } from "@/api/types";
 import { Button } from "@/components/ui/button";
+import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command";
 import { Input, Textarea } from "@/components/ui/input";
 import { NumberInput } from "@/components/ui/number-input";
+import { Popover, PopoverContent, PopoverTrigger, Tooltip } from "@/components/ui/overlays";
 import { Label, Separator, Switch } from "@/components/ui/primitives";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Tooltip } from "@/components/ui/overlays";
+import { useDebounce } from "@/hooks/useDebounce";
 import { cn } from "@/lib/utils";
 import { useSettings } from "@/store/settings";
 import { useTemplates } from "@/store/templates";
+import { useUi } from "@/store/ui";
 import { LabelSvg } from "./LabelSvg";
 import {
   autoFitGrid,
@@ -55,6 +63,7 @@ import {
   type Unit,
 } from "./model";
 import { identityResolver, makeResolver, placeholderTokens } from "./placeholders";
+import { toggleStyle, type StyleKey } from "./richText";
 
 type PaletteItem = { kind: "text" } | { kind: "qrcode" } | { kind: "code128" } | { kind: "token"; token: string };
 
@@ -73,12 +82,26 @@ export function Designer({ template }: { template: LabelTemplate }) {
   const [dragging, setDragging] = useState<PaletteItem | null>(null);
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }));
 
-  const sample = useQuery({
+  const sampleFirst = useQuery({
     queryKey: ["sampleObject", objectTypeId],
     queryFn: async () => (await assetsApi.searchObjects(`objectTypeId = ${Number(objectTypeId)}`, 0, 1)).values[0] ?? null,
     enabled: !!connection.data && !!objectTypeId,
     staleTime: 5 * 60_000,
   });
+  const previewId = useUi((s) => s.previewObjectId);
+  const setPreviewId = useUi((s) => s.setPreviewObjectId);
+  const chosen = useQuery({
+    queryKey: ["previewObject", previewId],
+    queryFn: () => assetsApi.getObject(previewId!),
+    enabled: !!connection.data && !!previewId,
+    staleTime: 5 * 60_000,
+  });
+  const sample = previewId ? chosen : sampleFirst;
+
+  // A choice made for another object type no longer applies.
+  useEffect(() => {
+    if (chosen.data && objectTypeId && chosen.data.objectType.id !== objectTypeId) setPreviewId(null);
+  }, [chosen.data, objectTypeId, setPreviewId]);
 
   const resolve = useMemo(
     () => (useSample && sample.data ? makeResolver(sample.data, attrs.data ?? []) : identityResolver),
@@ -210,9 +233,15 @@ export function Designer({ template }: { template: LabelTemplate }) {
             </Select>
             <div className="flex-1" />
             <Label className="flex items-center gap-2 text-xs font-normal">
-              <Switch checked={useSample} onCheckedChange={setUseSample} disabled={!sample.data} />
-              Preview with {sample.data ? sample.data.objectKey : "sample asset"}
+              <Switch checked={useSample} onCheckedChange={setUseSample} disabled={!sample.data} /> Preview
             </Label>
+            <PreviewPicker
+              objectTypeId={objectTypeId}
+              current={sample.data ?? null}
+              custom={!!previewId}
+              disabled={!connection.data || !objectTypeId}
+              onPick={setPreviewId}
+            />
           </div>
 
           <div className="flex-1 overflow-auto bg-muted/40 p-10" onMouseDown={(e) => e.target === e.currentTarget && setSelectedId(null)}>
@@ -413,6 +442,68 @@ function ElementInspector({
   );
 }
 
+function PreviewPicker({
+  objectTypeId,
+  current,
+  custom,
+  disabled,
+  onPick,
+}: {
+  objectTypeId: string | null;
+  current: AssetObject | null;
+  custom: boolean;
+  disabled: boolean;
+  onPick: (id: string | null) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const [term, setTerm] = useState("");
+  const debounced = useDebounce(term, 300);
+  const results = useReferenceSearch(objectTypeId ?? undefined, debounced);
+  const pick = (id: string | null) => {
+    onPick(id);
+    setOpen(false);
+  };
+
+  return (
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger asChild>
+        <Button variant="outline" size="sm" className="max-w-64" disabled={disabled}>
+          <span className="truncate">{current ? `${current.objectKey} \u00b7 ${current.label}` : "Choose asset"}</span>
+          <ChevronsUpDown className="opacity-50" />
+        </Button>
+      </PopoverTrigger>
+      <PopoverContent align="end" className="w-80 p-0">
+        <Command shouldFilter={false}>
+          <CommandInput autoFocus value={term} onValueChange={setTerm} placeholder="Search by key or name…" />
+          <CommandList>
+            {results.isFetching && (
+              <div className="flex items-center gap-2 px-3 py-2 text-xs text-muted-foreground">
+                <Loader2 className="size-3 animate-spin" /> Searching…
+              </div>
+            )}
+            {!results.isFetching && <CommandEmpty>No matches.</CommandEmpty>}
+            {custom && (
+              <CommandGroup>
+                <CommandItem value="__first" onSelect={() => pick(null)}>
+                  Use the first asset
+                </CommandItem>
+              </CommandGroup>
+            )}
+            <CommandGroup heading="Assets">
+              {results.data?.map((o) => (
+                <CommandItem key={o.id} value={o.id} onSelect={() => pick(o.id)}>
+                  <span className="truncate">{o.label}</span>
+                  <span className="ml-auto text-xs text-muted-foreground">{o.objectKey}</span>
+                </CommandItem>
+              ))}
+            </CommandGroup>
+          </CommandList>
+        </Command>
+      </PopoverContent>
+    </Popover>
+  );
+}
+
 function TokenInsert({ tokens, onInsert }: { tokens: string[]; onInsert: (token: string) => void }) {
   return (
     <Select value="" onValueChange={(t) => onInsert(`\${${t}}`)}>
@@ -432,12 +523,77 @@ function TokenInsert({ tokens, onInsert }: { tokens: string[]; onInsert: (token:
 
 function TextProps({ el, tokens, onChange }: { el: TextElement; tokens: string[]; onChange: (p: Partial<TextElement>) => void }) {
   const toggle = "data-[on=true]:bg-accent data-[on=true]:text-foreground";
+  const area = useRef<HTMLTextAreaElement>(null);
+  const [hasSelection, setHasSelection] = useState(false);
+  useEffect(() => setHasSelection(false), [el.id]);
+  const syncSelection = (e: React.SyntheticEvent<HTMLTextAreaElement>) =>
+    setHasSelection(e.currentTarget.selectionStart !== e.currentTarget.selectionEnd);
+
+  const applyStyle = (key: StyleKey) => {
+    const ta = area.current;
+    if (!ta || ta.selectionStart === ta.selectionEnd) return;
+    const r = toggleStyle(el.content, ta.selectionStart, ta.selectionEnd, key);
+    onChange({ content: r.content });
+    requestAnimationFrame(() => {
+      ta.focus();
+      ta.setSelectionRange(r.start, r.end);
+      setHasSelection(r.start !== r.end);
+    });
+  };
+  const styleButtons: { key: StyleKey; label: string; icon: React.ReactNode }[] = [
+    { key: "bold", label: "Bold (Ctrl+B)", icon: <Bold /> },
+    { key: "italic", label: "Italic (Ctrl+I)", icon: <Italic /> },
+    { key: "underline", label: "Underline (Ctrl+U)", icon: <Underline /> },
+    { key: "strike", label: "Strikethrough (Ctrl+Shift+X)", icon: <Strikethrough /> },
+  ];
+  const shortcuts: Record<string, StyleKey> = { b: "bold", i: "italic", u: "underline" };
+
   return (
     <div className="grid gap-3">
       <div className="grid gap-1">
-        <Label className="text-xs text-muted-foreground">Content</Label>
-        <Textarea value={el.content} rows={3} onChange={(e) => onChange({ content: e.target.value })} className="font-mono text-xs" />
+        <div className="flex items-center justify-between">
+          <Label className="text-xs text-muted-foreground">Content</Label>
+          <div className="flex gap-0.5">
+            {styleButtons.map((b) => (
+              <Tooltip key={b.key} content={`${b.label}: applies to the selected text`}>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="iconSm"
+                  aria-label={b.label}
+                  disabled={!hasSelection}
+                  onMouseDown={(e) => e.preventDefault()}
+                  onClick={() => applyStyle(b.key)}
+                >
+                  {b.icon}
+                </Button>
+              </Tooltip>
+            ))}
+          </div>
+        </div>
+        <Textarea
+          ref={area}
+          value={el.content}
+          rows={3}
+          onChange={(e) => onChange({ content: e.target.value })}
+          onSelect={syncSelection}
+          onKeyUp={syncSelection}
+          onMouseUp={syncSelection}
+          onFocus={syncSelection}
+          onKeyDown={(e) => {
+            if (!(e.ctrlKey || e.metaKey)) return;
+            const key = e.shiftKey && e.key.toLowerCase() === "x" ? "strike" : e.shiftKey ? undefined : shortcuts[e.key.toLowerCase()];
+            if (!key) return;
+            e.preventDefault();
+            applyStyle(key);
+          }}
+          className="font-mono text-xs"
+        />
         <TokenInsert tokens={tokens} onInsert={(t) => onChange({ content: el.content + t })} />
+        <p className="text-xs text-muted-foreground">
+          Select text, then use the buttons to style just that part. Markup: **bold** ''italic'' __underline__
+          ~~strike~~. Put a backslash before a marker to print it literally.
+        </p>
       </div>
       <div className="grid grid-cols-2 gap-2">
         <div className="grid gap-1">
@@ -450,13 +606,6 @@ function TextProps({ el, tokens, onChange }: { el: TextElement; tokens: string[]
         </div>
       </div>
       <div className="flex gap-1">
-        <Button variant="outline" size="iconSm" data-on={el.bold} className={toggle} onClick={() => onChange({ bold: !el.bold })} aria-label="Bold">
-          <Bold />
-        </Button>
-        <Button variant="outline" size="iconSm" data-on={el.italic} className={toggle} onClick={() => onChange({ italic: !el.italic })} aria-label="Italic">
-          <Italic />
-        </Button>
-        <div className="w-2" />
         {(["left", "center", "right"] as const).map((a) => (
           <Button key={a} variant="outline" size="iconSm" data-on={el.align === a} className={toggle} onClick={() => onChange({ align: a })} aria-label={`Align ${a}`}>
             {a === "left" ? <AlignLeft /> : a === "center" ? <AlignCenter /> : <AlignRight />}

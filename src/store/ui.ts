@@ -21,6 +21,8 @@ interface UiState {
   sidebarCollapsed: boolean;
   search: string;
   searchField: string;
+  /** Asset used for the label designer preview; null means the first asset of the type. */
+  previewObjectId: string | null;
   rawAql: string;
   editing: EditingCell | null;
   detailObjectId: string | null;
@@ -32,6 +34,7 @@ interface UiState {
   toggleSidebar: () => void;
   setSearch: (search: string) => void;
   setSearchField: (field: string) => void;
+  setPreviewObjectId: (id: string | null) => void;
   setRawAql: (aql: string) => void;
   setEditing: (cell: EditingCell | null) => void;
   openDetail: (objectId: string | null) => void;
@@ -47,6 +50,7 @@ export const useUi = create<UiState>((set) => ({
   sidebarCollapsed: false,
   search: "",
   searchField: "__all__",
+  previewObjectId: null,
   rawAql: "",
   editing: null,
   detailObjectId: null,
@@ -58,6 +62,7 @@ export const useUi = create<UiState>((set) => ({
   toggleSidebar: () => set((s) => ({ sidebarCollapsed: !s.sidebarCollapsed })),
   setSearch: (search) => set({ search }),
   setSearchField: (searchField) => set({ searchField }),
+  setPreviewObjectId: (previewObjectId) => set({ previewObjectId }),
   setRawAql: (rawAql) => set({ rawAql }),
   setEditing: (editing) => set({ editing }),
   openDetail: (detailObjectId) => set({ detailObjectId }),

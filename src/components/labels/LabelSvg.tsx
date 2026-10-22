@@ -2,6 +2,7 @@ import { useId } from "react";
 import { renderBarcode } from "./barcode";
 import { MM_PER_PT, type BarcodeElement, type LabelTemplate, type TextElement } from "./model";
 import type { Resolver } from "./placeholders";
+import { NO_STYLE, parseMarkup, type Style } from "./richText";
 
 export const LABEL_FONT = "Helvetica, Arial, sans-serif";
 
@@ -15,35 +16,124 @@ function measure(text: string, sizeMm: number, bold: boolean, italic: boolean) {
   return (measureCtx.measureText(text).width / 100) * sizeMm;
 }
 
-function wrapLines(text: string, maxWidth: number, sizeMm: number, bold: boolean, italic: boolean) {
-  const out: string[] = [];
-  for (const para of text.split("\n")) {
-    const words = para.split(/\s+/).filter(Boolean);
-    if (words.length === 0) {
-      out.push("");
-      continue;
-    }
-    let line = "";
-    for (const word of words) {
-      const candidate = line ? `${line} ${word}` : word;
-      if (measure(candidate, sizeMm, bold, italic) <= maxWidth || !line) line = candidate;
-      else {
-        out.push(line);
-        line = word;
+interface Piece {
+  text: string;
+  style: Style;
+}
+
+/** A run of non-space text; `gap` is the style of the space before it (null at the start of a line). */
+interface Word {
+  parts: Piece[];
+  gap: Style | null;
+}
+
+interface PlacedRun extends Piece {
+  x: number;
+  w: number;
+}
+
+const sameStyle = (a: Style, b: Style) =>
+  a.bold === b.bold && a.italic === b.italic && a.underline === b.underline && a.strike === b.strike;
+
+function pieceWidth(p: Piece, sizeMm: number) {
+  return measure(p.text, sizeMm, p.style.bold, p.style.italic);
+}
+
+/** Splits styled, placeholder-resolved text into words and explicit line breaks. */
+function toWords(el: TextElement, resolve: Resolver): (Word | null)[] {
+  const items: (Word | null)[] = [];
+  let word: Word | null = null;
+  let pendingGap: Style | null = null;
+  let atLineStart = true;
+  const flush = () => {
+    if (word) items.push(word);
+    word = null;
+  };
+
+  for (const run of parseMarkup(el.content)) {
+    const style: Style = {
+      bold: run.bold || el.bold,
+      italic: run.italic || el.italic,
+      underline: run.underline,
+      strike: run.strike,
+    };
+    for (const ch of resolve(run.text)) {
+      if (ch === "\n") {
+        flush();
+        items.push(null);
+        pendingGap = null;
+        atLineStart = true;
+      } else if (/\s/.test(ch)) {
+        flush();
+        if (!atLineStart) pendingGap ??= style;
+      } else {
+        word ??= { parts: [], gap: atLineStart ? null : pendingGap };
+        const last = word.parts.at(-1);
+        if (last && sameStyle(last.style, style)) last.text += ch;
+        else word.parts.push({ text: ch, style });
+        pendingGap = null;
+        atLineStart = false;
       }
     }
-    out.push(line);
   }
-  return out;
+  flush();
+  return items;
+}
+
+/** Greedy word wrap; width is the sum of every run's own measured width. */
+function wrapWords(items: (Word | null)[], maxWidth: number, sizeMm: number) {
+  const lines: Word[][] = [[]];
+  let lineW = 0;
+  const spaceW = (s: Style) => measure(" ", sizeMm, s.bold, s.italic);
+  for (const item of items) {
+    if (item === null) {
+      lines.push([]);
+      lineW = 0;
+      continue;
+    }
+    const line = lines[lines.length - 1];
+    const wordW = item.parts.reduce((sum, p) => sum + pieceWidth(p, sizeMm), 0);
+    const gapW = line.length ? spaceW(item.gap ?? NO_STYLE) : 0;
+    if (line.length === 0 || lineW + gapW + wordW <= maxWidth) {
+      line.push(item);
+      lineW += gapW + wordW;
+    } else {
+      lines.push([item]);
+      lineW = wordW;
+    }
+  }
+  return lines;
+}
+
+/** Turns a wrapped line into runs with absolute x positions for the element's alignment. */
+function placeLine(line: Word[], el: TextElement, sizeMm: number): PlacedRun[] {
+  const pieces: Piece[] = [];
+  const add = (text: string, style: Style) => {
+    const last = pieces.at(-1);
+    if (last && sameStyle(last.style, style)) last.text += text;
+    else pieces.push({ text, style });
+  };
+  line.forEach((w, i) => {
+    if (i > 0) add(" ", w.gap ?? NO_STYLE);
+    w.parts.forEach((p) => add(p.text, p.style));
+  });
+  const widths = pieces.map((p) => pieceWidth(p, sizeMm));
+  const total = widths.reduce((a, b) => a + b, 0);
+  let x = el.align === "center" ? el.x + (el.w - total) / 2 : el.align === "right" ? el.x + el.w - total : el.x;
+  return pieces.map((p, i) => {
+    const run = { ...p, x, w: widths[i] };
+    x += widths[i];
+    return run;
+  });
 }
 
 function TextNode({ el, resolve, clipId }: { el: TextElement; resolve: Resolver; clipId: string }) {
   const sizeMm = el.fontSize * MM_PER_PT;
   const lh = sizeMm * el.lineHeight;
   const maxLines = Math.max(1, Math.floor((el.h + 0.01) / lh));
-  const lines = wrapLines(resolve(el.content), el.w, sizeMm, el.bold, el.italic).slice(0, maxLines);
-  const anchor = el.align === "center" ? "middle" : el.align === "right" ? "end" : "start";
-  const x = el.align === "center" ? el.x + el.w / 2 : el.align === "right" ? el.x + el.w : el.x;
+  const lines = wrapWords(toWords(el, resolve), el.w, sizeMm)
+    .slice(0, maxLines)
+    .map((l) => placeLine(l, el, sizeMm));
   const ascent = sizeMm * 0.78 + (lh - sizeMm) / 2;
 
   return (
@@ -51,22 +141,38 @@ function TextNode({ el, resolve, clipId }: { el: TextElement; resolve: Resolver;
       <clipPath id={clipId}>
         <rect x={el.x} y={el.y} width={el.w} height={el.h} />
       </clipPath>
-      {lines.map((line, i) => (
-        <text
-          key={i}
-          x={x}
-          y={el.y + ascent + i * lh}
-          fontSize={sizeMm}
-          fontFamily={LABEL_FONT}
-          fontWeight={el.bold ? "bold" : "normal"}
-          fontStyle={el.italic ? "italic" : "normal"}
-          textAnchor={anchor}
-          fill="#000000"
-          xmlSpace="preserve"
-        >
-          {line}
-        </text>
-      ))}
+      {lines.map((runs, i) => {
+        const y = el.y + ascent + i * lh;
+        return runs.map((r, j) => {
+          const body = r.text.trim();
+          const lead = r.text.length - r.text.trimStart().length;
+          // Leading spaces are skipped by position so no renderer has to preserve them.
+          const bodyX = r.x + (lead ? measure(" ".repeat(lead), sizeMm, r.style.bold, r.style.italic) : 0);
+          return (
+            <g key={`${i}-${j}`}>
+              {body && (
+                <text
+                  x={bodyX}
+                  y={y}
+                  fontSize={sizeMm}
+                  fontFamily={LABEL_FONT}
+                  fontWeight={r.style.bold ? "bold" : "normal"}
+                  fontStyle={r.style.italic ? "italic" : "normal"}
+                  fill="#000000"
+                >
+                  {body}
+                </text>
+              )}
+              {r.style.underline && (
+                <line x1={r.x} x2={r.x + r.w} y1={y + sizeMm * 0.12} y2={y + sizeMm * 0.12} stroke="#000000" strokeWidth={sizeMm * 0.06} />
+              )}
+              {r.style.strike && (
+                <line x1={r.x} x2={r.x + r.w} y1={y - sizeMm * 0.28} y2={y - sizeMm * 0.28} stroke="#000000" strokeWidth={sizeMm * 0.06} />
+              )}
+            </g>
+          );
+        });
+      })}
     </g>
   );
 }

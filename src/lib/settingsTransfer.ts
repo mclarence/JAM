@@ -1,4 +1,5 @@
 import { PAPER_MM, type LabelElement, type LabelTemplate, type SheetLayout, type Unit } from "@/components/labels/model";
+import { foldBaseStyle } from "@/components/labels/richText";
 import type { AssetTagConfig } from "@/lib/assetTag";
 import { COLOR_KEYS, type ColorKey } from "@/lib/statusColors";
 import { useSettings, type AqlPreset, type ColumnPrefs, type PdfOutput } from "@/store/settings";
@@ -104,16 +105,16 @@ function cleanElement(e: unknown): LabelElement | null {
     if (!isStr(e.content) || !isPos(e.fontSize) || !isPos(e.lineHeight) || !oneOf(e.align, ["left", "center", "right"] as const)) {
       return null;
     }
-    return {
+    return foldBaseStyle({
       ...base,
-      kind: "text",
+      kind: "text" as const,
       content: e.content,
       fontSize: e.fontSize,
       bold: e.bold === true,
       italic: e.italic === true,
       align: e.align,
       lineHeight: e.lineHeight,
-    };
+    });
   }
   if (e.kind === "barcode") {
     if (!isStr(e.value) || !oneOf(e.symbology, ["qrcode", "code128"] as const)) return null;

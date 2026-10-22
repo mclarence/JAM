@@ -141,7 +141,7 @@ export function newTemplate(name: string, defaults: { unit: Unit; width: number;
     height: defaults.height,
     layout: { mode: "single" },
     elements: [
-      newTextElement({ x: 2, y: 2, w: defaults.width - 24, h: 7, content: "${Name}", fontSize: 11, bold: true }),
+      newTextElement({ x: 2, y: 2, w: defaults.width - 24, h: 7, content: "**${Name}**", fontSize: 11 }),
       newTextElement({ x: 2, y: 10, w: defaults.width - 24, h: 5, content: "${Key}", fontSize: 8 }),
       newBarcodeElement("qrcode", { x: defaults.width - 20, y: 2, w: 18, h: 18 }),
     ],
