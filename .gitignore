@@ -1,0 +1,16 @@
+node_modules
+dist
+src-tauri/target
+src-tauri/gen
+*.tsbuildinfo
+*.log
+pnpm-debug.log*
+.env
+.env.*
+!.env.example
+.DS_Store
+Thumbs.db
+.idea
+.vscode/*
+!.vscode/extensions.json
+*.swp

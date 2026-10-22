@@ -1,0 +1,38 @@
+Assets REST API Guide
+
+The Standard Assets REST API Guide will walk you through a workflow that is designed for users that want to use the REST API to complete tasks other than importing data or data structures into Assets. It follows the normal procedure of making REST API calls using basic auth.
+
+This workflow includes the following steps:
+
+    Use basic auth to authenticate.
+    Use the workspace call to discover your workspaceID
+    Use the REST API with your workspaceID to make your REST API calls.
+
+For Connect app integration using Connect JWT, the workflow is the same except for the authentication mechanism. Please refer to the section Connect app integration using Connect JWT for the details
+Step 1: Authenticate using basic auth
+
+Authentication: For authenticating directly against the REST API, the Assets REST API supports basic auth ( see Basic auth for REST APIs).
+
+Authorization: For making calls directly against the REST API, authorization is based on the user used in the authentication process.
+
+See Security overview for more details on basic authentication and authorization, or see this page for more information about how security is handled in Assets.
+
+Please note that import APIs might support extra means of authentication, such as OAuth tokens. Read more about this in the Imports REST API guide.
+
+If you are using the Imports REST API, only container tokens will be accepted, unless you're building on Atlassian Forge. For more information on how to integrate with Assets using Forge, see: Importing Third Party data into Assets using Forge.
+Step 2: Discover your workspaceId
+
+Workspace ID: Assets REST API uses the workspaceId to identify your individual instance of Assets. You must include the workspaceId when making any calls to the REST API.
+
+You can discover your workspaceId through the following endpoint:
+
+Copy
+https://<Assets Site Name>.atlassian.net/rest/servicedeskapi/assets/workspace
+
+Step 3: Use the REST API
+
+The workspaceId should be included in any requests as follows:
+
+Copy
+https://api.atlassian.com/ex/jira/{cloudId}/jsm/assets/workspace/{workspaceId}/v{version}/object/{id}
+

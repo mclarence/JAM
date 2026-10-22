@@ -1,0 +1,18 @@
+Scope name	Title	Description
+import:import-configuration:cmdb	Allow the app to read import structure and import data into Assets	Allow the app to read import structure and import data into Assets
+write:cmdb-object:jira	Allow the app to change Objects data in Assets	Allow the app to change Objects data in Assets
+delete:cmdb-object:jira	Allow the app to delete Objects from Assets	Allow the app to delete Objects from Assets
+read:cmdb-object:jira	Allow the app to read Objects from Assets	Allow the app to read Objects from Assets
+write:cmdb-schema:jira	Allow the app to change Schemas in Assets	Allow the app to change Schemas in Assets
+delete:cmdb-schema:jira	Allow the app to delete Schemas from Assets	Allow the app to delete Schemas from Assets
+read:cmdb-schema:jira	Allow the app to read Schemas from Assets	Allow the app to read Schemas from Assets
+write:cmdb-type:jira	Allow the app to change Object Types in Assets	Allow the app to change Object Types in Assets
+delete:cmdb-type:jira	Allow the app to delete Object Types from Assets	Allow the app to delete Object Types from Assets
+read:cmdb-type:jira	Allow the app to read Object Types from Assets	Allow the app to read Object Types from Assets
+write:cmdb-attribute:jira	Allow the app to change Object Type Attributes in Assets	Allow the app to change Object Type Attributes in Assets
+delete:cmdb-attribute:jira	Allow the app to delete Object Type Attributes from Assets	Allow the app to delete Object Type Attributes from Assets
+read:cmdb-attribute:jira	Allow the app to read Object Type Attributes from Assets	Allow the app to read Object Type Attributes from Assets
+read:cmdb-icon:jira	Allow the app to read Icons from Assets	Allow the app to read Icons from Assets
+read:cmdb-config:jira	Allow the app to read Assets configuration	Allow the app to read Assets configuration
+write:cmdb-config:jira	Allow the app to write Assets configuration	Allow the app to write Assets configuration
+delete:cmdb-config:jira	Allow the app to delete Assets configuration	Allow the app to delete Assets configuration

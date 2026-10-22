@@ -1,0 +1,82 @@
+Basic auth for REST APIs
+On This Page
+
+    Overview
+    Simple example
+    Supplying basic auth headers
+    Authentication challenges
+
+This page shows you how to allow REST clients to authenticate themselves using basic authentication with an Atlassian account username and API token.
+
+Basic authentication is not as secure as other methods. We recommend using it for scripts and manual calls to the REST APIs. Otherwise, consider building an app:
+
+    Forge apps and Connect apps use more secure methods for authentication: OAuth 2.0 and JWT respectively. In addition, authentication is built into these app frameworks, so you don't need to configure it. For more information, see Security for Forge apps and Security for Connect apps.
+    Apps created in the developer console can use OAuth 2.0 authorization code grants (3LO), which is also more secure than basic auth.
+
+Overview
+
+Important notice for apps using 3LO or API tokens
+
+Apps that collect API tokens or instruct customers to create individual 3LO apps don't comply with our Security requirements for cloud apps and Acceptable use policy.
+
+Follow these best practices:
+
+    Build a single, distributable 3LO app for your integration.
+    Clearly identify your app in the Marketplace (recommended).
+    Work with customers to transition away from custom 3LO apps or API tokens.
+
+Read our blog post for full details
+
+Confluence's REST API is protected by the same restrictions which are provided via Confluence's standard web interface. This means that if you do not log in, you are accessing Confluence anonymously. Furthermore, if you log in and do not have permission to view something in Confluence, you will not be able to view it using the Confluence REST API either.
+
+In most cases, the first step in using the Confluence REST API is to authenticate a user account with your Confluence site. Any authentication that works against Confluence will work against the REST API. On this page we will show you a simple example of basic authentication.
+Simple example
+
+Most client software provides a simple mechanism for supplying a user name (the Atlassian account email) and password (the API token) and will build the required authentication headers automatically. For example, you can specify the -u argument with cURL as follows:
+
+Copy
+curl -D- \
+   -u <your_email@domain.com>:<your_user_api_token> \
+   -X GET \
+   -H "Content-Type: application/json" \
+   https://<your-domain.atlassian.net>/wiki/rest/api/space
+
+The above cURL command will not work as shown. You need to replace <your_email@domain.com>, <your_user_api_token>, and <your-domain.atlassian.net> with your user and instance information before running it in the terminal.
+Using Postman
+
+You can use Postman to make calls to the Confluence Cloud REST APIs. Check it out: Confluence Cloud REST API.
+Supplying basic auth headers
+
+You can construct and send basic auth headers yourself, including a base64-encoded string that contains your Atlassian account email and API token.
+
+To use basic auth headers, perform the following steps:
+
+    Generate an API Token for your Atlassian Account: https://id.atlassian.com/manage/api-tokens
+    Build a string of the form your_email@domain.com:your_user_api_token.
+    You'll need to encode your authorization credentials to Base64 encoded. You can do this locally:
+        Linux/Unix/MacOS:
+
+        Copy
+        echo -n your_email@domain.com:your_user_api_token | base64
+
+        Windows 7 and later, using Microsoft Powershell:
+
+        Copy
+        $Text = ‘your_email@domain.com:your_user_api_token’
+        $Bytes = [System.Text.Encoding]::UTF8.GetBytes($Text)
+        $EncodedText = [Convert]::ToBase64String($Bytes)
+        $EncodedText
+
+    Supply an Authorization header with content Basic followed by the encoded string. Example: Authorization: Basic eW91cl9lbWFpbEBkb21haW4uY29tOnlvdXJfdXNlcl9hcGlfdG9rZW4=
+
+Copy
+curl -D- \
+   -X GET \
+   -H "Authorization: Basic <your_encoded_string>" \
+   -H "Content-Type: application/json" \
+   "https://<your-domain.atlassian.net>/wiki/rest/api/space"
+
+The above cURL command will not work as shown. You need to replace <your_encoded_string> and <your-domain.atlassian.net> with your authorization credentials encoded string and instance information before running it in the terminal.
+Authentication challenges
+
+Because Confluence permits a default level of access to anonymous users, it does not supply a typical authentication challenge. Some HTTP client software expect to receive an authentication challenge before they will send an authorization header. This means that Confluence may not behave as your HTTP client software expects. In this case, you may need to configure it to supply the authorization header, as described above, rather than relying on its default mechanism.
