@@ -2,6 +2,7 @@ mod connection;
 mod error;
 mod files;
 mod http;
+mod proxy;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
@@ -15,6 +16,11 @@ pub fn run() {
             connection::get_connection,
             connection::disconnect,
             http::assets_request,
+            proxy::get_network_options,
+            proxy::set_network_options,
+            proxy::proxy_sign_in_start,
+            proxy::proxy_sign_in_finish,
+            proxy::proxy_sign_in_cancel,
             files::save_pdf,
             files::open_pdf,
         ])

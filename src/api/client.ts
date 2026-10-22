@@ -1,7 +1,17 @@
 import { invoke, isTauri } from "@tauri-apps/api/core";
 import type { AuthType, ConnectionInfo } from "./types";
 
-export type ApiErrorKind = "notConnected" | "unauthorized" | "http" | "network" | "keyring" | "invalid" | "io" | "unknown";
+export type ApiErrorKind =
+  | "notConnected"
+  | "unauthorized"
+  | "http"
+  | "network"
+  | "certificate"
+  | "proxyAuth"
+  | "keyring"
+  | "invalid"
+  | "io"
+  | "unknown";
 
 export class ApiError extends Error {
   constructor(
@@ -60,6 +70,20 @@ export const connectionApi = {
   connect: (input: ConnectInput) => call<ConnectionInfo>("connect", { input }),
   get: () => (isTauri() ? call<ConnectionInfo | null>("get_connection") : Promise.resolve(null)),
   disconnect: () => call<void>("disconnect"),
+};
+
+export interface NetworkOptions {
+  acceptInvalidCerts: boolean;
+  proxyUrl: string | null;
+}
+
+export const networkApi = {
+  get: () => (isTauri() ? call<NetworkOptions>("get_network_options") : Promise.resolve(null)),
+  set: (options: NetworkOptions) => call<void>("set_network_options", { options }),
+  signInStart: (siteUrl: string) => call<void>("proxy_sign_in_start", { siteUrl }),
+  /** Resolves with the number of session cookies captured. */
+  signInFinish: (siteUrl: string) => call<number>("proxy_sign_in_finish", { siteUrl }),
+  signInCancel: () => call<void>("proxy_sign_in_cancel"),
 };
 
 export const fileApi = {

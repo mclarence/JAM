@@ -1,14 +1,16 @@
-use std::sync::RwLock;
+use std::sync::{Arc, RwLock};
 
 use base64::Engine;
+use reqwest::cookie::Jar;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use url::Url;
 
-use crate::error::{AppError, AppResult};
+use crate::error::{proxy_block, AppError, AppResult};
 
 const KEYRING_SERVICE: &str = "com.jiraassets.manager";
 const KEYRING_USER: &str = "connection";
+const KEYRING_NETWORK: &str = "network";
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "lowercase")]
@@ -67,22 +69,67 @@ pub struct ConnectInput {
     pub secret: Option<String>,
 }
 
+/// Transport settings for networks with TLS-inspecting web filters.
+#[derive(Clone, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", default)]
+pub struct NetworkOptions {
+    pub accept_invalid_certs: bool,
+    /// Overrides the system proxy; needed when the system uses a PAC script, which reqwest cannot read.
+    pub proxy_url: Option<String>,
+}
+
 pub struct AppState {
-    pub client: reqwest::Client,
+    client: RwLock<reqwest::Client>,
+    /// Holds web proxy session cookies captured from the sign-in window.
+    pub jar: Arc<Jar>,
+    network: RwLock<NetworkOptions>,
     pub connection: RwLock<Option<StoredConnection>>,
+}
+
+fn build_client(opts: &NetworkOptions, jar: Arc<Jar>) -> AppResult<reqwest::Client> {
+    let mut builder = reqwest::Client::builder()
+        .user_agent(concat!("jira-assets-manager/", env!("CARGO_PKG_VERSION")))
+        .timeout(std::time::Duration::from_secs(60))
+        .cookie_provider(jar);
+    if opts.accept_invalid_certs {
+        builder = builder.danger_accept_invalid_certs(true);
+    }
+    if let Some(p) = opts.proxy_url.as_deref().map(str::trim).filter(|p| !p.is_empty()) {
+        let proxy = reqwest::Proxy::all(p).map_err(|e| AppError::Invalid(format!("Invalid proxy URL: {e}")))?;
+        builder = builder.proxy(proxy);
+    }
+    Ok(builder.build()?)
 }
 
 impl AppState {
     pub fn new() -> Self {
-        let client = reqwest::Client::builder()
-            .user_agent(concat!("jira-assets-manager/", env!("CARGO_PKG_VERSION")))
-            .timeout(std::time::Duration::from_secs(60))
-            .build()
+        let jar = Arc::new(Jar::default());
+        let network = load_network_options().unwrap_or_default();
+        let client = build_client(&network, jar.clone())
+            .or_else(|_| build_client(&NetworkOptions::default(), jar.clone()))
             .expect("failed to build HTTP client");
         Self {
-            client,
+            client: RwLock::new(client),
+            jar,
+            network: RwLock::new(network),
             connection: RwLock::new(load_from_keyring().ok().flatten()),
         }
+    }
+
+    pub fn client(&self) -> reqwest::Client {
+        self.client.read().expect("client lock poisoned").clone()
+    }
+
+    pub fn network(&self) -> NetworkOptions {
+        self.network.read().expect("network lock poisoned").clone()
+    }
+
+    pub fn apply_network(&self, opts: NetworkOptions) -> AppResult<()> {
+        let client = build_client(&opts, self.jar.clone())?;
+        save_network_options(&opts)?;
+        *self.client.write().expect("client lock poisoned") = client;
+        *self.network.write().expect("network lock poisoned") = opts;
+        Ok(())
     }
 
     pub fn current(&self) -> AppResult<StoredConnection> {
@@ -111,7 +158,7 @@ fn auth_header(auth_type: AuthType, email: &str, secret: &str) -> String {
 }
 
 /// Only Atlassian Cloud sites are accepted so credentials are never sent elsewhere.
-fn normalize_site(input: &str) -> AppResult<String> {
+pub fn normalize_site(input: &str) -> AppResult<String> {
     let trimmed = input.trim().trim_end_matches('/');
     let with_scheme = if trimmed.contains("://") {
         trimmed.to_string()
@@ -143,6 +190,22 @@ fn load_from_keyring() -> AppResult<Option<StoredConnection>> {
     }
 }
 
+fn load_network_options() -> AppResult<NetworkOptions> {
+    let entry = keyring::Entry::new(KEYRING_SERVICE, KEYRING_NETWORK)?;
+    match entry.get_password() {
+        Ok(json) => Ok(serde_json::from_str(&json).unwrap_or_default()),
+        Err(keyring::Error::NoEntry) => Ok(NetworkOptions::default()),
+        Err(e) => Err(e.into()),
+    }
+}
+
+fn save_network_options(opts: &NetworkOptions) -> AppResult<()> {
+    let entry = keyring::Entry::new(KEYRING_SERVICE, KEYRING_NETWORK)?;
+    let json = serde_json::to_string(opts).map_err(|e| AppError::Invalid(e.to_string()))?;
+    entry.set_password(&json)?;
+    Ok(())
+}
+
 fn save_to_keyring(conn: &StoredConnection) -> AppResult<()> {
     let entry = keyring::Entry::new(KEYRING_SERVICE, KEYRING_USER)?;
     let json = serde_json::to_string(conn).map_err(|e| AppError::Invalid(e.to_string()))?;
@@ -165,6 +228,14 @@ async fn get_json(client: &reqwest::Client, url: &str, auth: Option<&str>) -> Ap
     }
     let res = req.send().await?;
     let status = res.status();
+    let content_type = res
+        .headers()
+        .get(reqwest::header::CONTENT_TYPE)
+        .and_then(|v| v.to_str().ok())
+        .map(str::to_owned);
+    if let Some(e) = proxy_block(status.as_u16(), content_type.as_deref()) {
+        return Err(e);
+    }
     if !status.is_success() {
         let message = match status.as_u16() {
             401 => "Unauthorized: check your email and API token".to_string(),
@@ -250,7 +321,7 @@ pub async fn connect(state: tauri::State<'_, AppState>, input: ConnectInput) -> 
         Some(s) => s.to_string(),
         None => state.current().map(|c| c.secret).map_err(|_| AppError::Invalid("API token is required".into()))?,
     };
-    let conn = discover(&state.client, &input, &secret).await?;
+    let conn = discover(&state.client(), &input, &secret).await?;
     save_to_keyring(&conn)?;
     let info = conn.info();
     state.set(Some(conn));

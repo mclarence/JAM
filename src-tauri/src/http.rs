@@ -2,7 +2,7 @@ use reqwest::Method;
 use serde_json::Value;
 
 use crate::connection::AppState;
-use crate::error::{AppError, AppResult};
+use crate::error::{proxy_block, AppError, AppResult};
 
 fn validate_path(path: &str) -> AppResult<()> {
     let ok = path.starts_with('/')
@@ -69,7 +69,7 @@ pub async fn assets_request(
     let url = format!("{}{}", conn.api_base, path);
 
     let mut req = state
-        .client
+        .client()
         .request(method, &url)
         .header("Authorization", conn.auth_header())
         .header("Accept", "application/json");
@@ -82,6 +82,14 @@ pub async fn assets_request(
 
     let res = req.send().await?;
     let status = res.status();
+    let content_type = res
+        .headers()
+        .get(reqwest::header::CONTENT_TYPE)
+        .and_then(|v| v.to_str().ok())
+        .map(str::to_owned);
+    if let Some(e) = proxy_block(status.as_u16(), content_type.as_deref()) {
+        return Err(e);
+    }
     let text = res.text().await?;
     if !status.is_success() {
         return Err(AppError::Http {
