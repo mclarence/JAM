@@ -50,6 +50,8 @@ export interface TextElement extends ElementBase {
   italic: boolean;
   align: "left" | "center" | "right";
   lineHeight: number;
+  /** "wrap" breaks lines at the box width; "shrink" scales the font down until the text fits. Absent means "wrap". */
+  fit?: "wrap" | "shrink";
 }
 
 export interface BarcodeElement extends ElementBase {
@@ -112,6 +114,7 @@ export function newTextElement(partial: Partial<TextElement> = {}): TextElement 
     italic: false,
     align: "left",
     lineHeight: 1.2,
+    fit: "wrap",
     ...partial,
   };
 }

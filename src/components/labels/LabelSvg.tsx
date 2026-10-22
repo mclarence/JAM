@@ -80,11 +80,35 @@ function toWords(el: TextElement, resolve: Resolver): (Word | null)[] {
   return items;
 }
 
-/** Greedy word wrap; width is the sum of every run's own measured width. */
+/** Breaks a word that is wider than a line into fragments that each fit (at least one character each). */
+function splitWord(word: Word, maxWidth: number, sizeMm: number): Word[] {
+  const out: Word[] = [];
+  let cur: Piece[] = [];
+  let curW = 0;
+  for (const part of word.parts) {
+    for (const ch of part.text) {
+      const w = pieceWidth({ text: ch, style: part.style }, sizeMm);
+      if (cur.length && curW + w > maxWidth) {
+        out.push({ parts: cur, gap: null });
+        cur = [];
+        curW = 0;
+      }
+      const last = cur.at(-1);
+      if (last && sameStyle(last.style, part.style)) last.text += ch;
+      else cur.push({ text: ch, style: part.style });
+      curW += w;
+    }
+  }
+  if (cur.length) out.push({ parts: cur, gap: null });
+  return out;
+}
+
+/** Greedy word wrap; width is the sum of every run's own measured width. Words wider than a line are broken by character. */
 function wrapWords(items: (Word | null)[], maxWidth: number, sizeMm: number) {
   const lines: Word[][] = [[]];
   let lineW = 0;
   const spaceW = (s: Style) => measure(" ", sizeMm, s.bold, s.italic);
+  const wordWidth = (w: Word) => w.parts.reduce((sum, p) => sum + pieceWidth(p, sizeMm), 0);
   for (const item of items) {
     if (item === null) {
       lines.push([]);
@@ -92,9 +116,16 @@ function wrapWords(items: (Word | null)[], maxWidth: number, sizeMm: number) {
       continue;
     }
     const line = lines[lines.length - 1];
-    const wordW = item.parts.reduce((sum, p) => sum + pieceWidth(p, sizeMm), 0);
+    const wordW = wordWidth(item);
     const gapW = line.length ? spaceW(item.gap ?? NO_STYLE) : 0;
-    if (line.length === 0 || lineW + gapW + wordW <= maxWidth) {
+    if (wordW > maxWidth) {
+      const frags = splitWord(item, maxWidth, sizeMm);
+      frags.forEach((f, i) => {
+        if (i === 0 && line.length === 0) line.push(f);
+        else lines.push([f]);
+      });
+      lineW = wordWidth(frags[frags.length - 1]);
+    } else if (line.length === 0 || lineW + gapW + wordW <= maxWidth) {
       line.push(item);
       lineW += gapW + wordW;
     } else {
@@ -128,12 +159,27 @@ function placeLine(line: Word[], el: TextElement, sizeMm: number): PlacedRun[] {
 }
 
 function TextNode({ el, resolve, clipId }: { el: TextElement; resolve: Resolver; clipId: string }) {
-  const sizeMm = el.fontSize * MM_PER_PT;
+  const words = toWords(el, resolve);
+  let sizeMm = el.fontSize * MM_PER_PT;
+  let lines: Word[][];
+  if (el.fit === "shrink") {
+    // Text width and height scale linearly with font size, so one measurement gives the fitting scale.
+    lines = wrapWords(words, Infinity, sizeMm);
+    const widest = Math.max(
+      0,
+      ...lines.map((l) => {
+        const runs = placeLine(l, { ...el, align: "left" }, sizeMm);
+        return runs.length ? runs[runs.length - 1].x + runs[runs.length - 1].w - el.x : 0;
+      }),
+    );
+    const scale = Math.min(1, widest > 0 ? el.w / widest : 1, el.h / (lines.length * sizeMm * el.lineHeight));
+    sizeMm = Math.max(sizeMm * scale, MM_PER_PT);
+  } else {
+    const maxLines = Math.max(1, Math.floor((el.h + 0.01) / (sizeMm * el.lineHeight)));
+    lines = wrapWords(words, el.w, sizeMm).slice(0, maxLines);
+  }
   const lh = sizeMm * el.lineHeight;
-  const maxLines = Math.max(1, Math.floor((el.h + 0.01) / lh));
-  const lines = wrapWords(toWords(el, resolve), el.w, sizeMm)
-    .slice(0, maxLines)
-    .map((l) => placeLine(l, el, sizeMm));
+  const placed = lines.map((l) => placeLine(l, el, sizeMm));
   const ascent = sizeMm * 0.78 + (lh - sizeMm) / 2;
 
   return (
@@ -141,7 +187,7 @@ function TextNode({ el, resolve, clipId }: { el: TextElement; resolve: Resolver;
       <clipPath id={clipId}>
         <rect x={el.x} y={el.y} width={el.w} height={el.h} />
       </clipPath>
-      {lines.map((runs, i) => {
+      {placed.map((runs, i) => {
         const y = el.y + ascent + i * lh;
         return runs.map((r, j) => {
           const body = r.text.trim();

@@ -597,13 +597,25 @@ function TextProps({ el, tokens, onChange }: { el: TextElement; tokens: string[]
       </div>
       <div className="grid grid-cols-2 gap-2">
         <div className="grid gap-1">
-          <Label className="text-xs text-muted-foreground">Font size (pt)</Label>
+          <Label className="text-xs text-muted-foreground">{el.fit === "shrink" ? "Max font size (pt)" : "Font size (pt)"}</Label>
           <NumberInput className="h-8" min={2} max={200} value={el.fontSize} onCommit={(fontSize) => onChange({ fontSize })} />
         </div>
         <div className="grid gap-1">
           <Label className="text-xs text-muted-foreground">Line height</Label>
           <NumberInput className="h-8" min={0.8} max={3} step={0.1} value={el.lineHeight} onCommit={(lineHeight) => onChange({ lineHeight })} />
         </div>
+      </div>
+      <div className="grid gap-1">
+        <Label className="text-xs text-muted-foreground">When text is too big</Label>
+        <Select value={el.fit ?? "wrap"} onValueChange={(v) => onChange({ fit: v as NonNullable<TextElement["fit"]> })}>
+          <SelectTrigger className="h-8">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="wrap">Wrap onto more lines</SelectItem>
+            <SelectItem value="shrink">Shrink font to fit</SelectItem>
+          </SelectContent>
+        </Select>
       </div>
       <div className="flex gap-1">
         {(["left", "center", "right"] as const).map((a) => (

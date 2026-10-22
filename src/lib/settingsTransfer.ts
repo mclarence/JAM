@@ -114,6 +114,7 @@ function cleanElement(e: unknown): LabelElement | null {
       italic: e.italic === true,
       align: e.align,
       lineHeight: e.lineHeight,
+      fit: e.fit === "shrink" ? ("shrink" as const) : ("wrap" as const),
     });
   }
   if (e.kind === "barcode") {
