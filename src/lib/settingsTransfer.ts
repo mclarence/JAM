@@ -193,7 +193,7 @@ export function parseImport(text: string): SettingsBundle {
   } catch {
     throw new Error("The file is not valid JSON.");
   }
-  if (!isObj(raw) || raw.format !== FORMAT) throw new Error("This is not a JIRA Assets Manager settings export.");
+  if (!isObj(raw) || raw.format !== FORMAT) throw new Error("This is not a JAM settings export.");
   if (!isNum(raw.version) || raw.version > VERSION) {
     throw new Error("This export was created by a newer version of the app. Update the app and try again.");
   }

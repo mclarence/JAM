@@ -40,7 +40,7 @@ pub async fn proxy_sign_in_start(app: AppHandle, site_url: String) -> AppResult<
         return Ok(());
     }
     WebviewWindowBuilder::new(&app, LOGIN_LABEL, WebviewUrl::External(site))
-        .title("Sign in to your web proxy, then click Finish in JIRA Assets Manager")
+        .title("Sign in to your web proxy, then click Finish in JAM")
         .inner_size(1000.0, 760.0)
         .build()
         .map_err(window_err)?;

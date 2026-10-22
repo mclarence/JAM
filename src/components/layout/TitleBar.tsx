@@ -50,7 +50,7 @@ export function TitleBar() {
     >
       <div data-tauri-drag-region className="flex w-52 shrink-0 items-center gap-2 text-sm font-semibold">
         <span data-tauri-drag-region className="truncate">
-          JIRA Assets Manager
+          JAM
         </span>
       </div>
 

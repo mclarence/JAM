@@ -3,7 +3,7 @@
     "windows": [
       {
         "label": "main",
-        "title": "JIRA Assets Manager",
+        "title": "JAM",
         "width": 1400,
         "height": 880,
         "minWidth": 960,

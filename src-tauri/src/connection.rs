@@ -88,7 +88,7 @@ pub struct AppState {
 
 fn build_client(opts: &NetworkOptions, jar: Arc<Jar>) -> AppResult<reqwest::Client> {
     let mut builder = reqwest::Client::builder()
-        .user_agent(concat!("jira-assets-manager/", env!("CARGO_PKG_VERSION")))
+        .user_agent(concat!("jam/", env!("CARGO_PKG_VERSION")))
         .timeout(std::time::Duration::from_secs(60))
         .cookie_provider(jar);
     if opts.accept_invalid_certs {

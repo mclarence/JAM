@@ -1,6 +1,6 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "JIRA Assets Manager",
+  "productName": "JAM",
   "version": "0.1.0",
   "identifier": "com.jiraassets.manager",
   "build": {
@@ -13,7 +13,7 @@
     "windows": [
       {
         "label": "main",
-        "title": "JIRA Assets Manager",
+        "title": "JAM",
         "width": 1400,
         "height": 880,
         "minWidth": 960,
