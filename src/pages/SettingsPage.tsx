@@ -1,4 +1,5 @@
 import { PageHeader } from "@/components/layout/PageHeader";
+import { AssetTagTab } from "@/components/settings/AssetTagTab";
 import { ConnectionTab } from "@/components/settings/ConnectionTab";
 import { LabelDefaultsTab } from "@/components/settings/LabelDefaultsTab";
 import { SchemaTab } from "@/components/settings/SchemaTab";
@@ -15,6 +16,7 @@ export function SettingsPage() {
         <TabsList>
           <TabsTrigger value="connection">API Connection</TabsTrigger>
           <TabsTrigger value="schema">Schema &amp; Object Type</TabsTrigger>
+          <TabsTrigger value="assetTag">Asset Tag</TabsTrigger>
           <TabsTrigger value="status">Status Colours</TabsTrigger>
           <TabsTrigger value="labels">Label Defaults</TabsTrigger>
         </TabsList>
@@ -23,6 +25,9 @@ export function SettingsPage() {
         </TabsContent>
         <TabsContent value="schema">
           <SchemaTab />
+        </TabsContent>
+        <TabsContent value="assetTag">
+          <AssetTagTab />
         </TabsContent>
         <TabsContent value="status">
           <StatusColorsTab />

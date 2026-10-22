@@ -148,6 +148,17 @@ export function useReferenceSearch(refTypeId: string | undefined, term: string) 
   });
 }
 
+export function useCreateObject() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: assetsApi.createObject,
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["objects"] });
+      qc.invalidateQueries({ queryKey: ["count"] });
+    },
+  });
+}
+
 export interface UpdateAttributeInput {
   object: AssetObject;
   attr: ObjectTypeAttribute;

@@ -1,6 +1,7 @@
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
 import { DEFAULT_STATUS_COLORS, type ColorKey } from "@/lib/statusColors";
+import type { AssetTagConfig } from "@/lib/assetTag";
 import { fileStorage } from "./persist";
 
 export interface AqlPreset {
@@ -23,6 +24,8 @@ interface SettingsState {
   /** Lower-cased status name -> colour. */
   statusColors: Record<string, ColorKey>;
   columns: Record<string, ColumnPrefs>;
+  /** Asset tag numbering, per object type id. */
+  assetTags: Record<string, AssetTagConfig>;
   aqlPresets: AqlPreset[];
   labelDefaults: { unit: "mm" | "in" | "px"; width: number; height: number; output: PdfOutput };
 
@@ -32,6 +35,7 @@ interface SettingsState {
   resetStatusColors: () => void;
   setColumnPrefs: (objectTypeId: string, prefs: ColumnPrefs) => void;
   resetColumnPrefs: (objectTypeId: string) => void;
+  setAssetTag: (objectTypeId: string, config: AssetTagConfig | null) => void;
   savePreset: (name: string, aql: string) => void;
   deletePreset: (id: string) => void;
   setLabelDefaults: (patch: Partial<SettingsState["labelDefaults"]>) => void;
@@ -44,6 +48,7 @@ export const useSettings = create<SettingsState>()(
       objectTypeId: null,
       statusColors: { ...DEFAULT_STATUS_COLORS },
       columns: {},
+      assetTags: {},
       aqlPresets: [],
       labelDefaults: { unit: "mm", width: 62, height: 29, output: "open" },
 
@@ -64,6 +69,13 @@ export const useSettings = create<SettingsState>()(
           const columns = { ...s.columns };
           delete columns[objectTypeId];
           return { columns };
+        }),
+      setAssetTag: (objectTypeId, config) =>
+        set((s) => {
+          const assetTags = { ...s.assetTags };
+          if (config) assetTags[objectTypeId] = config;
+          else delete assetTags[objectTypeId];
+          return { assetTags };
         }),
       savePreset: (name, aql) =>
         set((s) => ({ aqlPresets: [...s.aqlPresets, { id: crypto.randomUUID(), name, aql }] })),

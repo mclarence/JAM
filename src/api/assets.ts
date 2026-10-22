@@ -45,6 +45,8 @@ export const assetsApi = {
 
   getObject: (id: string) => assetsRequest<AssetObject>("GET", `/object/${encodeURIComponent(id)}`),
 
+  createObject: (body: ObjectIn) => assetsRequest<AssetObject>("POST", "/object/create", { body }),
+
   updateObject: (id: string, body: ObjectIn) =>
     assetsRequest<AssetObject>("PUT", `/object/${encodeURIComponent(id)}`, { body }),
 

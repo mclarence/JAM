@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type { ColumnSizingState, RowSelectionState, SortingState, VisibilityState } from "@tanstack/react-table";
-import { Database, Loader2, PlugZap, RefreshCw } from "lucide-react";
+import { Database, Loader2, PlugZap, Plus, RefreshCw } from "lucide-react";
 import {
   useAssetsInfinite,
   useAttributes,
@@ -13,6 +13,7 @@ import {
 import type { AssetObject } from "@/api/types";
 import { AssetGrid } from "@/components/assets/AssetGrid";
 import { ColumnDrawer } from "@/components/assets/ColumnDrawer";
+import { CreateAssetDialog } from "@/components/assets/CreateAssetDialog";
 import { DetailDrawer } from "@/components/assets/DetailDrawer";
 import { FilterBar } from "@/components/assets/FilterBar";
 import { PrintActionBar } from "@/components/assets/PrintActionBar";
@@ -47,6 +48,7 @@ export function AssetsPage() {
   const [sorting, setSorting] = useState<SortingState>([]);
   const [rowSelection, setRowSelection] = useState<RowSelectionState>({});
   const [selectingAll, setSelectingAll] = useState(false);
+  const [createOpen, setCreateOpen] = useState(false);
   const debouncedSearch = useDebounce(search, 300);
 
   const sortAttr = sorting[0] ? attributes.find((a) => a.id === sorting[0].id) : undefined;
@@ -171,6 +173,9 @@ export function AssetsPage() {
         }
         actions={
           <>
+            <Button size="sm" onClick={() => setCreateOpen(true)}>
+              <Plus /> Add
+            </Button>
             <ColumnDrawer
               attributes={orderedAttributes}
               hidden={hidden}
@@ -235,6 +240,15 @@ export function AssetsPage() {
       />
 
       <DetailDrawer fallback={findLoaded} />
+
+      <CreateAssetDialog
+        open={createOpen}
+        onOpenChange={setCreateOpen}
+        objectTypeId={objectTypeId}
+        objectTypeName={typeName}
+        attributes={attributes}
+        statuses={statuses.data ?? []}
+      />
     </div>
   );
 }
