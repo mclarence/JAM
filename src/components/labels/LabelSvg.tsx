@@ -236,16 +236,37 @@ function BarcodeNode({ el, resolve }: { el: BarcodeElement; resolve: Resolver })
       </g>
     );
   }
+  const isLinear = el.symbology === "code128";
+  const captionH = isLinear && el.showText ? Math.min(el.h * 0.3, 4) : 0;
+  const barsH = el.h - captionH;
+  const capSize = captionH * 0.85;
+  // Shrink the caption if it would be wider than the barcode.
+  const capFit = capSize > 0 ? Math.min(capSize, (el.w * 0.98) / measure(value, 1, false, false)) : 0;
   return (
-    <svg
-      x={el.x}
-      y={el.y}
-      width={el.w}
-      height={el.h}
-      viewBox={result.viewBox}
-      preserveAspectRatio="xMidYMid meet"
-      dangerouslySetInnerHTML={{ __html: result.body }}
-    />
+    <g>
+      <svg
+        x={el.x}
+        y={el.y}
+        width={el.w}
+        height={barsH}
+        viewBox={result.viewBox}
+        // Linear barcodes are stretched to the full box; only the bar width ratios matter for scanning.
+        preserveAspectRatio={isLinear ? "none" : "xMidYMid meet"}
+        dangerouslySetInnerHTML={{ __html: result.body }}
+      />
+      {captionH > 0 && (
+        <text
+          x={el.x + el.w / 2}
+          y={el.y + barsH + captionH * 0.8}
+          fontSize={capFit}
+          fontFamily={LABEL_FONT}
+          textAnchor="middle"
+          fill="#000000"
+        >
+          {value}
+        </text>
+      )}
+    </g>
   );
 }
 

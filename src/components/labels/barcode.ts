@@ -8,9 +8,9 @@ export interface BarcodeSvg {
 
 const cache = new Map<string, BarcodeSvg | Error>();
 
-/** Renders a barcode to vector SVG markup (paths only, including human-readable text). */
-export function renderBarcode(el: Pick<BarcodeElement, "symbology" | "showText" | "h">, text: string): BarcodeSvg | Error {
-  const key = `${el.symbology}|${el.showText}|${Math.round(el.h)}|${text}`;
+/** Renders a barcode to vector SVG markup (paths only). Code 128 is bars only; its caption is drawn by the caller. */
+export function renderBarcode(el: Pick<BarcodeElement, "symbology">, text: string): BarcodeSvg | Error {
+  const key = `${el.symbology}|${text}`;
   const hit = cache.get(key);
   if (hit) return hit;
 
@@ -20,15 +20,7 @@ export function renderBarcode(el: Pick<BarcodeElement, "symbology" | "showText" 
     const svg =
       el.symbology === "qrcode"
         ? toSVG({ bcid: "qrcode", text, eclevel: "M", scale: 1 } as Parameters<typeof toSVG>[0])
-        : toSVG({
-            bcid: "code128",
-            text,
-            scale: 1,
-            height: Math.max(3, el.showText ? el.h * 0.7 : el.h),
-            includetext: el.showText,
-            textxalign: "center",
-            textsize: 8,
-          });
+        : toSVG({ bcid: "code128", text, scale: 1, height: 10, includetext: false });
     const viewBox = /viewBox="([^"]+)"/.exec(svg)?.[1];
     const body = svg.replace(/^[\s\S]*?<svg[^>]*>/, "").replace(/<\/svg>\s*$/, "");
     if (!viewBox) throw new Error("Invalid barcode output");
