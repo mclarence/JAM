@@ -17,7 +17,7 @@ export interface CellEditorProps {
   onCancel: () => void;
 }
 
-function toLocalDateTime(iso: string) {
+export function toLocalDateTime(iso: string) {
   if (!iso) return "";
   const d = new Date(iso);
   if (Number.isNaN(d.getTime())) return "";

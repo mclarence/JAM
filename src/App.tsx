@@ -7,6 +7,7 @@ import { Sidebar } from "@/components/layout/Sidebar";
 import { TitleBar } from "@/components/layout/TitleBar";
 import { DashboardPage } from "@/pages/DashboardPage";
 import { AssetsPage } from "@/pages/AssetsPage";
+import { QuickScanPage } from "@/pages/QuickScanPage";
 import { TemplatesPage } from "@/pages/TemplatesPage";
 import { SettingsPage } from "@/pages/SettingsPage";
 
@@ -37,6 +38,7 @@ export default function App() {
         <main className="flex min-w-0 flex-1 flex-col overflow-hidden">
           {ready && page === "dashboard" && <DashboardPage />}
           {ready && page === "assets" && <AssetsPage />}
+          {ready && page === "quickscan" && <QuickScanPage />}
           {ready && page === "templates" && <TemplatesPage />}
           {ready && page === "settings" && <SettingsPage />}
         </main>

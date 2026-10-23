@@ -1,6 +1,6 @@
 import { create } from "zustand";
 
-export type Page = "dashboard" | "assets" | "templates" | "settings";
+export type Page = "dashboard" | "assets" | "quickscan" | "templates" | "settings";
 export type SettingsTab = "connection" | "schema" | "assetTag" | "status" | "labels" | "backup";
 
 export interface Notification {
