@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
-import { AlertTriangle, CheckCircle2, Database, Loader2, MinusCircle, PlugZap, Plus, RotateCcw, ScanLine, Volume2, VolumeX, XCircle } from "lucide-react";
+import { AlertTriangle, CheckCircle2, Database, Loader2, MinusCircle, PlugZap, Plus, RotateCcw, Save, ScanLine, Trash2, Volume2, VolumeX, XCircle } from "lucide-react";
 import { assetsApi } from "@/api/assets";
 import { qk, useAttributes, useConnection, useObjectTypes, useStatusTypes } from "@/api/queries";
 import type { ObjectTypeAttribute } from "@/api/types";
@@ -8,6 +8,7 @@ import { EmptyState, PageHeader } from "@/components/layout/PageHeader";
 import { ScanActionRow } from "@/components/quickscan/ScanActionRow";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/overlays";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Card, Label } from "@/components/ui/primitives";
 import { SEARCH_KEY } from "@/lib/aql";
@@ -63,7 +64,8 @@ export function QuickScanPage() {
   const connection = useConnection();
   const navigate = useUi((s) => s.navigate);
   const { schemaId, objectTypeId } = useSettings();
-  const { configs, setConfig, sound, setSound } = useQuickScan();
+  const { configs, presets: presetsByType, setConfig, savePreset, updatePreset, deletePreset, loadPreset, sound, setSound } =
+    useQuickScan();
   const objectTypes = useObjectTypes(schemaId);
   const attrsQuery = useAttributes(objectTypeId);
   const statuses = useStatusTypes(schemaId);
@@ -71,7 +73,17 @@ export function QuickScanPage() {
   const attrs = useMemo(() => sortAttributes(attrsQuery.data ?? []), [attrsQuery.data]);
   const lookupOptions = useMemo(() => lookupAttributes(attrs), [attrs]);
   const actionOptions = useMemo(() => actionAttributes(attrs), [attrs]);
-  const config = (objectTypeId ? configs[objectTypeId] : undefined) ?? DEFAULT_SCAN_CONFIG;
+  const stored = (objectTypeId ? configs[objectTypeId] : undefined) ?? DEFAULT_SCAN_CONFIG;
+  // A saved lookup attribute that no longer exists (or is the Key attribute) falls back to Key.
+  const lookupValid =
+    !attrsQuery.isSuccess || stored.lookup === SEARCH_KEY || lookupOptions.some((a) => a.id === stored.lookup);
+  const config = lookupValid ? stored : { ...stored, lookup: SEARCH_KEY };
+  const presets = (objectTypeId && presetsByType[objectTypeId]) || [];
+  const activePreset = presets.find((p) => p.id === config.presetId);
+  const signature = (lookup: string, actions: ScanAction[]) =>
+    JSON.stringify([lookup, actions.map((a) => [a.attrId, a.mode, a.value])]);
+  const modified =
+    !!activePreset && signature(activePreset.lookup, activePreset.actions) !== signature(config.lookup, config.actions);
 
   const [rows, setRows] = useState<ScanRow[]>([]);
   const [input, setInput] = useState("");
@@ -83,6 +95,8 @@ export function QuickScanPage() {
   const soundRef = useRef(sound);
   soundRef.current = sound;
   const [sessionStart, setSessionStart] = useState(() => Date.now());
+  const [saveOpen, setSaveOpen] = useState(false);
+  const [presetName, setPresetName] = useState("");
 
   const patchRow = (id: string, patch: Partial<ScanRow>) =>
     setRows((rs) => rs.map((r) => (r.id === id ? { ...r, ...patch } : r)));
@@ -230,6 +244,80 @@ export function QuickScanPage() {
           <div className="grid gap-1">
             <h2 className="font-medium">Setup</h2>
             <p className="text-sm text-muted-foreground">Choose how assets are found and which fields change on every scan.</p>
+          </div>
+          <div className="flex flex-wrap items-center gap-2">
+            <Label className="w-56 shrink-0">Preset</Label>
+            <Select
+              value={activePreset?.id}
+              onValueChange={(id) => objectTypeId && loadPreset(objectTypeId, id)}
+              disabled={presets.length === 0}
+            >
+              <SelectTrigger className="h-9 w-56">
+                <SelectValue placeholder={presets.length ? "Load a preset…" : "No presets saved"} />
+              </SelectTrigger>
+              <SelectContent>
+                {presets.map((p) => (
+                  <SelectItem key={p.id} value={p.id}>
+                    {p.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            {activePreset && modified && (
+              <Button variant="outline" size="sm" onClick={() => objectTypeId && updatePreset(objectTypeId, activePreset.id)}>
+                <Save /> Update preset
+              </Button>
+            )}
+            <Popover
+              open={saveOpen}
+              onOpenChange={(open) => {
+                setSaveOpen(open);
+                if (open) setPresetName("");
+              }}
+            >
+              <PopoverTrigger asChild>
+                <Button variant="outline" size="sm" disabled={config.actions.length === 0}>
+                  <Plus /> Save as new preset
+                </Button>
+              </PopoverTrigger>
+              <PopoverContent className="grid w-72 gap-2">
+                <Label htmlFor="preset-name">Preset name</Label>
+                <Input
+                  id="preset-name"
+                  autoFocus
+                  value={presetName}
+                  onChange={(e) => setPresetName(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" && presetName.trim() && objectTypeId) {
+                      savePreset(objectTypeId, presetName.trim());
+                      setSaveOpen(false);
+                    }
+                  }}
+                  placeholder="e.g. Return to stock"
+                />
+                <Button
+                  size="sm"
+                  disabled={!presetName.trim()}
+                  onClick={() => {
+                    if (!objectTypeId) return;
+                    savePreset(objectTypeId, presetName.trim());
+                    setSaveOpen(false);
+                  }}
+                >
+                  Save
+                </Button>
+              </PopoverContent>
+            </Popover>
+            {activePreset && (
+              <Button
+                variant="ghost"
+                size="icon"
+                aria-label={`Delete preset ${activePreset.name}`}
+                onClick={() => objectTypeId && deletePreset(objectTypeId, activePreset.id)}
+              >
+                <Trash2 />
+              </Button>
+            )}
           </div>
           <div className="flex items-center gap-3">
             <Label className="w-56 shrink-0">Match the scanned value against</Label>

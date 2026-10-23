@@ -3,6 +3,7 @@ import { foldBaseStyle } from "@/components/labels/richText";
 import type { AssetTagConfig } from "@/lib/assetTag";
 import { COLOR_KEYS, type ColorKey } from "@/lib/statusColors";
 import { useSettings, type AqlPreset, type ColumnPrefs, type PdfOutput } from "@/store/settings";
+import { useQuickScan, type ScanAction, type ScanPreset } from "@/store/quickScan";
 import { useTemplates } from "@/store/templates";
 import { useThemeStore, type ThemePref } from "@/store/theme";
 
@@ -10,7 +11,7 @@ import { useThemeStore, type ThemePref } from "@/store/theme";
 const FORMAT = "jira-assets-manager-settings";
 const VERSION = 1;
 
-export type Section = "filters" | "columns" | "assetTags" | "statusColors" | "templates" | "preferences";
+export type Section = "filters" | "columns" | "assetTags" | "statusColors" | "scanPresets" | "templates" | "preferences";
 export type ImportMode = "merge" | "replace";
 
 export const SECTION_LABELS: Record<Section, string> = {
@@ -18,6 +19,7 @@ export const SECTION_LABELS: Record<Section, string> = {
   columns: "Column layouts",
   assetTags: "Asset tag numbering",
   statusColors: "Status colours",
+  scanPresets: "Quick Scan presets",
   templates: "Label templates",
   preferences: "Preferences (selected schema/type, label defaults, theme)",
 };
@@ -34,6 +36,8 @@ export interface SettingsBundle {
   columns?: Record<string, ColumnPrefs>;
   assetTags?: Record<string, AssetTagConfig>;
   statusColors?: Record<string, ColorKey>;
+  /** Quick Scan presets per object type id. */
+  scanPresets?: Record<string, ScanPreset[]>;
   templates?: { items: LabelTemplate[]; defaultTemplateId: string | null };
   preferences?: Preferences;
 }
@@ -46,6 +50,7 @@ export function buildExport(): string {
     columns: s.columns,
     assetTags: s.assetTags,
     statusColors: s.statusColors,
+    scanPresets: useQuickScan.getState().presets,
     templates: { items: t.templates, defaultTemplateId: t.defaultTemplateId },
     preferences: {
       schemaId: s.schemaId,
@@ -96,6 +101,22 @@ function cleanAssetTags(v: unknown) {
   return mapValues<AssetTagConfig>(v, (c) =>
     isObj(c) && isStr(c.attributeId) && isStr(c.template) ? { attributeId: c.attributeId, template: c.template } : null,
   );
+}
+
+function cleanScanAction(a: unknown): ScanAction | null {
+  if (!isObj(a) || !isStr(a.id) || !isStr(a.attrId) || !oneOf(a.mode, ["set", "clear", "now"] as const)) return null;
+  return { id: a.id, attrId: a.attrId, mode: a.mode, value: isStr(a.value) ? a.value : "", display: isStr(a.display) ? a.display : "" };
+}
+
+function cleanScanPresets(v: unknown) {
+  return mapValues<ScanPreset[]>(v, (list) => {
+    if (!Array.isArray(list)) return null;
+    return list.flatMap((p) =>
+      isObj(p) && isStr(p.id) && isStr(p.name) && isStr(p.lookup) && Array.isArray(p.actions)
+        ? [{ id: p.id, name: p.name, lookup: p.lookup, actions: p.actions.flatMap((a) => cleanScanAction(a) ?? []) }]
+        : [],
+    );
+  });
 }
 
 function cleanElement(e: unknown): LabelElement | null {
@@ -205,6 +226,7 @@ export function parseImport(text: string): SettingsBundle {
   if ("statusColors" in raw) {
     bundle.statusColors = mapValues<ColorKey>(raw.statusColors, (c) => (oneOf(c, COLOR_KEYS) ? c : null));
   }
+  if ("scanPresets" in raw) bundle.scanPresets = cleanScanPresets(raw.scanPresets);
   if (isObj(raw.templates)) {
     const items = Array.isArray(raw.templates.items) ? raw.templates.items.flatMap((t) => cleanTemplate(t) ?? []) : [];
     const def = isStr(raw.templates.defaultTemplateId) ? raw.templates.defaultTemplateId : null;
@@ -223,6 +245,7 @@ export function sectionCounts(b: SettingsBundle): Partial<Record<Section, number
     ...(b.columns && { columns: Object.keys(b.columns).length }),
     ...(b.assetTags && { assetTags: Object.keys(b.assetTags).length }),
     ...(b.statusColors && { statusColors: Object.keys(b.statusColors).length }),
+    ...(b.scanPresets && { scanPresets: Object.values(b.scanPresets).reduce((n, l) => n + l.length, 0) }),
     ...(b.templates && { templates: b.templates.items.length }),
     ...(b.preferences && { preferences: 1 }),
   };
@@ -255,6 +278,14 @@ export function applyImport(bundle: SettingsBundle, sections: Set<Section>, mode
   }
   useSettings.setState(patch);
 
+  if (sections.has("scanPresets") && bundle.scanPresets) {
+    const current = useQuickScan.getState().presets;
+    const presets = replace ? bundle.scanPresets : { ...current };
+    if (!replace) {
+      for (const [typeId, list] of Object.entries(bundle.scanPresets)) presets[typeId] = mergeById(current[typeId] ?? [], list);
+    }
+    useQuickScan.setState({ presets });
+  }
   if (sections.has("templates") && bundle.templates) {
     const t = useTemplates.getState();
     const templates = replace ? bundle.templates.items : mergeById(t.templates, bundle.templates.items);

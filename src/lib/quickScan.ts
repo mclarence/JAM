@@ -9,9 +9,11 @@ export function sanitizeScan(raw: string) {
   return raw.replace(/[\u0000-\u001f\u007f]/g, "").trim();
 }
 
-/** Attributes a scan can be matched against: the key or plain, searchable attributes. */
+/** Attributes a scan can be matched against besides the built-in Key option. */
 export function lookupAttributes(attrs: ObjectTypeAttribute[]) {
-  return attrs.filter((a) => a.type === AttrType.Default && !a.hidden && !isTextarea(a));
+  return attrs.filter(
+    (a) => a.type === AttrType.Default && !a.hidden && !isTextarea(a) && a.name.trim().toLowerCase() !== "key",
+  );
 }
 
 /** Attributes that can be changed on scan: anything editable, since clearing works even for read-only editors. */

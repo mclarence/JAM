@@ -189,7 +189,7 @@ export function BackupTab() {
       <Card className="flex items-start gap-3 p-4 text-sm">
         <ShieldCheck className="mt-0.5 size-5 shrink-0 text-green-600 dark:text-green-400" />
         <p className="text-muted-foreground">
-          Exports include saved filters, column layouts, asset tag numbering, status colours, label templates and
+          Exports include saved filters, column layouts, asset tag numbering, status colours, Quick Scan presets, label templates and
           preferences. Your API connection (site, email and token) is only included if you choose to, and then the
           whole file is encrypted with a passphrase. Network and proxy options are never exported.
         </p>
