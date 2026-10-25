@@ -165,11 +165,8 @@ export interface ObjectIn {
   attributes: ObjectAttributeIn[];
 }
 
-export type AuthType = "basic" | "bearer";
-
 export interface ConnectionInfo {
   siteUrl: string;
-  authType: AuthType;
   email: string;
   cloudId: string;
   workspaceId: string;

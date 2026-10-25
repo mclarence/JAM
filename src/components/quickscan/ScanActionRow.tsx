@@ -16,9 +16,11 @@ interface Props {
   statuses: StatusType[];
   onChange: (patch: Partial<ScanAction>) => void;
   onRemove: () => void;
+  /** Vertical layout for narrow containers. */
+  stacked?: boolean;
 }
 
-export function ScanActionRow({ action, attrs, statuses, onChange, onRemove }: Props) {
+export function ScanActionRow({ action, attrs, statuses, onChange, onRemove, stacked }: Props) {
   const attr = attrs.find((a) => a.id === action.attrId);
   const kind = attr ? editorKind(attr) : "readonly";
   const required = (attr?.minimumCardinality ?? 0) > 0;
@@ -32,38 +34,62 @@ export function ScanActionRow({ action, attrs, statuses, onChange, onRemove }: P
     onChange({ attrId: id, mode: editorKind(next) === "readonly" ? "clear" : "set", value: "", display: "" });
   };
 
+  const attrSelect = (
+    <Select value={action.attrId} onValueChange={pickAttr}>
+      <SelectTrigger className={stacked ? "h-9 min-w-0 flex-1" : "h-9 w-56"}>
+        <SelectValue placeholder="Attribute" />
+      </SelectTrigger>
+      <SelectContent>
+        {attrs.map((a) => (
+          <SelectItem key={a.id} value={a.id}>
+            {a.name}
+          </SelectItem>
+        ))}
+      </SelectContent>
+    </Select>
+  );
+  const modeSelect = (
+    <Select value={action.mode} onValueChange={(v) => onChange({ mode: v as ScanMode })}>
+      <SelectTrigger className={stacked ? "h-9 w-full" : "h-9 w-36"}>
+        <SelectValue />
+      </SelectTrigger>
+      <SelectContent>
+        {modes.map((m) => (
+          <SelectItem key={m.value} value={m.value}>
+            {m.label}
+          </SelectItem>
+        ))}
+      </SelectContent>
+    </Select>
+  );
+  const value = attr && action.mode === "set" && (
+    <ValueControl attr={attr} kind={kind} action={action} statuses={statuses} onChange={onChange} />
+  );
+  const remove = (
+    <Button variant="ghost" size="icon" aria-label="Remove field" onClick={onRemove}>
+      <Trash2 />
+    </Button>
+  );
+
+  if (stacked) {
+    return (
+      <div className="grid gap-2 rounded-md border p-2">
+        <div className="flex items-center gap-1">
+          {attrSelect}
+          {remove}
+        </div>
+        {modeSelect}
+        {value}
+      </div>
+    );
+  }
+
   return (
     <div className="flex items-center gap-2">
-      <Select value={action.attrId} onValueChange={pickAttr}>
-        <SelectTrigger className="h-9 w-56">
-          <SelectValue placeholder="Attribute" />
-        </SelectTrigger>
-        <SelectContent>
-          {attrs.map((a) => (
-            <SelectItem key={a.id} value={a.id}>
-              {a.name}
-            </SelectItem>
-          ))}
-        </SelectContent>
-      </Select>
-      <Select value={action.mode} onValueChange={(v) => onChange({ mode: v as ScanMode })}>
-        <SelectTrigger className="h-9 w-36">
-          <SelectValue />
-        </SelectTrigger>
-        <SelectContent>
-          {modes.map((m) => (
-            <SelectItem key={m.value} value={m.value}>
-              {m.label}
-            </SelectItem>
-          ))}
-        </SelectContent>
-      </Select>
-      <div className="min-w-0 flex-1">
-        {attr && action.mode === "set" && <ValueControl attr={attr} kind={kind} action={action} statuses={statuses} onChange={onChange} />}
-      </div>
-      <Button variant="ghost" size="icon" aria-label="Remove field" onClick={onRemove}>
-        <Trash2 />
-      </Button>
+      {attrSelect}
+      {modeSelect}
+      <div className="min-w-0 flex-1">{value}</div>
+      {remove}
     </div>
   );
 }

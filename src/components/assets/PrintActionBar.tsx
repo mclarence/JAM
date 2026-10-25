@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { ChevronDown, Eye, Loader2, Printer, Star, X } from "lucide-react";
+import { ChevronDown, Eye, Loader2, Pencil, Printer, Star, X } from "lucide-react";
 import type { AssetObject, ObjectTypeAttribute } from "@/api/types";
 import { PrintDialog } from "@/components/labels/PrintDialog";
 import { printLabels } from "@/components/labels/print";
@@ -24,6 +24,7 @@ export function PrintActionBar({
   onSelectAllMatching,
   selectingAll,
   onClear,
+  onBatchEdit,
 }: {
   selected: AssetObject[];
   attributes: ObjectTypeAttribute[];
@@ -31,6 +32,7 @@ export function PrintActionBar({
   onSelectAllMatching: () => void;
   selectingAll: boolean;
   onClear: () => void;
+  onBatchEdit: () => void;
 }) {
   const { templates, defaultTemplateId } = useTemplates();
   const output = useSettings((s) => s.labelDefaults.output);
@@ -72,6 +74,10 @@ export function PrintActionBar({
           <X /> Clear
         </Button>
         <div className="flex-1" />
+
+        <Button variant="outline" onClick={onBatchEdit}>
+          <Pencil /> Update {count}
+        </Button>
 
         {templates.length === 0 ? (
           <Button onClick={() => navigate("templates")}>

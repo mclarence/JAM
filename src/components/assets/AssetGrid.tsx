@@ -164,7 +164,8 @@ export function AssetGrid(props: Props) {
   return (
     <div ref={scrollRef} className="relative min-h-0 flex-1 overflow-auto rounded-lg border bg-background">
       <div style={{ width: totalWidth, minWidth: "100%" }}>
-        <DndContext sensors={sensors} onDragEnd={onDragEnd}>
+        {/* The sticky header sits at the top edge, so vertical auto-scroll would jump the grid to the top. */}
+        <DndContext sensors={sensors} onDragEnd={onDragEnd} autoScroll={{ threshold: { x: 0.2, y: 0 } }}>
         <div className="sticky top-0 z-10 flex border-b bg-card text-xs font-medium text-muted-foreground">
           {table.getFlatHeaders().map((header) => {
             const sorted = header.column.getIsSorted();

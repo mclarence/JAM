@@ -3,18 +3,15 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { CheckCircle2, ChevronDown, ChevronRight, Globe, Loader2, LogOut, PlugZap, TriangleAlert } from "lucide-react";
 import { connectionApi, networkApi } from "@/api/client";
 import { qk, useConnection } from "@/api/queries";
-import type { AuthType } from "@/api/types";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, Checkbox, Label } from "@/components/ui/primitives";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { notify } from "@/lib/notify";
 
 export function ConnectionTab() {
   const qc = useQueryClient();
   const connection = useConnection();
   const [siteUrl, setSiteUrl] = useState("");
-  const [authType, setAuthType] = useState<AuthType>("basic");
   const [email, setEmail] = useState("");
   const [secret, setSecret] = useState("");
   const [acceptInvalidCerts, setAcceptInvalidCerts] = useState(false);
@@ -33,7 +30,6 @@ export function ConnectionTab() {
   useEffect(() => {
     if (connection.data) {
       setSiteUrl(connection.data.siteUrl);
-      setAuthType(connection.data.authType);
       setEmail(connection.data.email);
     }
   }, [connection.data]);
@@ -41,7 +37,7 @@ export function ConnectionTab() {
   const connect = useMutation({
     mutationFn: async () => {
       await networkApi.set({ acceptInvalidCerts, proxyUrl: proxyUrl.trim() || null });
-      return connectionApi.connect({ siteUrl, authType, email, secret: secret || undefined });
+      return connectionApi.connect({ siteUrl, email, secret: secret || undefined });
     },
     onSuccess: (info) => {
       qc.setQueryData(qk.connection, info);
@@ -63,7 +59,7 @@ export function ConnectionTab() {
   });
 
   const connected = !!connection.data;
-  const canSubmit = siteUrl.trim() && (authType === "bearer" || email.trim()) && (secret.trim() || connected);
+  const canSubmit = siteUrl.trim() && email.trim() && (secret.trim() || connected);
 
   const signInStart = useMutation({
     mutationFn: () => networkApi.signInStart(siteUrl),
@@ -117,25 +113,11 @@ export function ConnectionTab() {
           />
         </div>
         <div className="grid gap-2">
-          <Label>Authentication</Label>
-          <Select value={authType} onValueChange={(v) => setAuthType(v as AuthType)}>
-            <SelectTrigger>
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="basic">Basic auth (email + API token)</SelectItem>
-              <SelectItem value="bearer">Bearer (OAuth 2.0 access token)</SelectItem>
-            </SelectContent>
-          </Select>
+          <Label htmlFor="email">Atlassian account email</Label>
+          <Input id="email" type="email" value={email} onChange={(e) => setEmail(e.target.value)} />
         </div>
-        {authType === "basic" && (
-          <div className="grid gap-2">
-            <Label htmlFor="email">Atlassian account email</Label>
-            <Input id="email" type="email" value={email} onChange={(e) => setEmail(e.target.value)} />
-          </div>
-        )}
         <div className="grid gap-2">
-          <Label htmlFor="secret">{authType === "basic" ? "API token" : "Access token"}</Label>
+          <Label htmlFor="secret">API token</Label>
           <Input
             id="secret"
             type="password"
@@ -144,12 +126,10 @@ export function ConnectionTab() {
             value={secret}
             onChange={(e) => setSecret(e.target.value)}
           />
-          {authType === "basic" && (
-            <p className="text-xs text-muted-foreground">
-              Create a token at id.atlassian.com/manage/api-tokens. It is stored in your OS credential vault and
-              never exposed to the UI.
-            </p>
-          )}
+          <p className="text-xs text-muted-foreground">
+            Create a token at id.atlassian.com/manage/api-tokens. It is stored in your OS credential vault and
+            never exposed to the UI.
+          </p>
         </div>
 
         <Card className="grid gap-3 p-4">

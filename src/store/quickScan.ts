@@ -37,6 +37,7 @@ interface QuickScanState {
   configs: Record<string, ScanConfig>;
   presets: Record<string, ScanPreset[]>;
   sound: boolean;
+  panelOpen: boolean;
 
   setConfig: (objectTypeId: string, patch: Partial<ScanConfig>) => void;
   /** Saves the current setup as a new preset and links the setup to it. */
@@ -45,6 +46,7 @@ interface QuickScanState {
   deletePreset: (objectTypeId: string, presetId: string) => void;
   loadPreset: (objectTypeId: string, presetId: string) => void;
   setSound: (sound: boolean) => void;
+  setPanelOpen: (panelOpen: boolean) => void;
 }
 
 const freshIds = (actions: ScanAction[]) => actions.map((a) => ({ ...a, id: crypto.randomUUID() }));
@@ -55,6 +57,7 @@ export const useQuickScan = create<QuickScanState>()(
       configs: {},
       presets: {},
       sound: true,
+      panelOpen: true,
 
       setConfig: (objectTypeId, patch) =>
         set((s) => ({
@@ -107,6 +110,7 @@ export const useQuickScan = create<QuickScanState>()(
           };
         }),
       setSound: (sound) => set({ sound }),
+      setPanelOpen: (panelOpen) => set({ panelOpen }),
     }),
     { name: "quickscan", storage: fileStorage("quickscan.json"), version: 1 },
   ),

@@ -1,16 +1,14 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
-import { AlertTriangle, CheckCircle2, Database, Loader2, MinusCircle, PlugZap, Plus, RotateCcw, Save, ScanLine, Trash2, Volume2, VolumeX, XCircle } from "lucide-react";
+import { AlertTriangle, CheckCircle2, Database, Loader2, MinusCircle, PanelLeftClose, PanelLeftOpen, PlugZap, RotateCcw, ScanLine, Volume2, VolumeX, XCircle } from "lucide-react";
 import { assetsApi } from "@/api/assets";
 import { qk, useAttributes, useConnection, useObjectTypes, useStatusTypes } from "@/api/queries";
 import type { ObjectTypeAttribute } from "@/api/types";
 import { EmptyState, PageHeader } from "@/components/layout/PageHeader";
-import { ScanActionRow } from "@/components/quickscan/ScanActionRow";
+import { ScanOptionsPanel } from "@/components/quickscan/ScanOptionsPanel";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/overlays";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Card, Label } from "@/components/ui/primitives";
+import { Card } from "@/components/ui/primitives";
 import { SEARCH_KEY } from "@/lib/aql";
 import { sortAttributes, editorKind } from "@/lib/attributes";
 import { actionAttributes, lookupAttributes, lookupQuery, planChanges, sanitizeScan } from "@/lib/quickScan";
@@ -64,7 +62,7 @@ export function QuickScanPage() {
   const connection = useConnection();
   const navigate = useUi((s) => s.navigate);
   const { schemaId, objectTypeId } = useSettings();
-  const { configs, presets: presetsByType, setConfig, savePreset, updatePreset, deletePreset, loadPreset, sound, setSound } =
+  const { configs, presets: presetsByType, setConfig, savePreset, updatePreset, deletePreset, loadPreset, sound, setSound, panelOpen, setPanelOpen } =
     useQuickScan();
   const objectTypes = useObjectTypes(schemaId);
   const attrsQuery = useAttributes(objectTypeId);
@@ -95,8 +93,6 @@ export function QuickScanPage() {
   const soundRef = useRef(sound);
   soundRef.current = sound;
   const [sessionStart, setSessionStart] = useState(() => Date.now());
-  const [saveOpen, setSaveOpen] = useState(false);
-  const [presetName, setPresetName] = useState("");
 
   const patchRow = (id: string, patch: Partial<ScanRow>) =>
     setRows((rs) => rs.map((r) => (r.id === id ? { ...r, ...patch } : r)));
@@ -154,6 +150,11 @@ export function QuickScanPage() {
   useEffect(() => {
     if (ready) inputRef.current?.focus();
   }, [ready]);
+
+  // Scanning can't start until the setup is complete, so surface the options.
+  useEffect(() => {
+    if (attrsQuery.isSuccess && !ready) setPanelOpen(true);
+  }, [attrsQuery.isSuccess, ready, setPanelOpen]);
 
   const submit = () => {
     const text = sanitizeScan(input);
@@ -222,13 +223,27 @@ export function QuickScanPage() {
   const lastTone = last ? (last.warning && last.state === "updated" ? "warning" : STATE_META[last.state].tone) : null;
   const lookupLabel = config.lookup === SEARCH_KEY ? "Key" : (attrs.find((a) => a.id === config.lookup)?.name ?? "Key");
 
+  const summary = config.actions.map((a) => {
+    const name = attrs.find((x) => x.id === a.attrId)?.name ?? "Field";
+    if (a.mode === "clear") return `${name} cleared`;
+    return `${name} → ${a.mode === "now" ? "now" : a.display || a.value || "…"}`;
+  });
+
+  const closePanel = () => {
+    setPanelOpen(false);
+    inputRef.current?.focus();
+  };
+
   return (
-    <div className="flex-1 overflow-auto p-8">
+    <div className="flex min-h-0 flex-1 flex-col overflow-auto p-6 lg:overflow-hidden">
       <PageHeader
         title="Quick Scan"
         description={<>Scan or type a value and press Enter to update the matching <strong>{typeName}</strong> straight away.</>}
         actions={
           <>
+            <Button variant="outline" size="sm" onClick={() => (panelOpen ? closePanel() : setPanelOpen(true))} aria-pressed={panelOpen}>
+              {panelOpen ? <PanelLeftClose /> : <PanelLeftOpen />} Options
+            </Button>
             <Button variant="outline" size="sm" onClick={() => setSound(!sound)} aria-pressed={sound}>
               {sound ? <Volume2 /> : <VolumeX />} Sound {sound ? "on" : "off"}
             </Button>
@@ -239,124 +254,30 @@ export function QuickScanPage() {
         }
       />
 
-      <div className="mx-auto grid max-w-5xl gap-6">
-        <Card className="grid gap-4 p-5">
-          <div className="grid gap-1">
-            <h2 className="font-medium">Setup</h2>
-            <p className="text-sm text-muted-foreground">Choose how assets are found and which fields change on every scan.</p>
-          </div>
-          <div className="flex flex-wrap items-center gap-2">
-            <Label className="w-56 shrink-0">Preset</Label>
-            <Select
-              value={activePreset?.id}
-              onValueChange={(id) => objectTypeId && loadPreset(objectTypeId, id)}
-              disabled={presets.length === 0}
-            >
-              <SelectTrigger className="h-9 w-56">
-                <SelectValue placeholder={presets.length ? "Load a preset…" : "No presets saved"} />
-              </SelectTrigger>
-              <SelectContent>
-                {presets.map((p) => (
-                  <SelectItem key={p.id} value={p.id}>
-                    {p.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            {activePreset && modified && (
-              <Button variant="outline" size="sm" onClick={() => objectTypeId && updatePreset(objectTypeId, activePreset.id)}>
-                <Save /> Update preset
-              </Button>
-            )}
-            <Popover
-              open={saveOpen}
-              onOpenChange={(open) => {
-                setSaveOpen(open);
-                if (open) setPresetName("");
-              }}
-            >
-              <PopoverTrigger asChild>
-                <Button variant="outline" size="sm" disabled={config.actions.length === 0}>
-                  <Plus /> Save as new preset
-                </Button>
-              </PopoverTrigger>
-              <PopoverContent className="grid w-72 gap-2">
-                <Label htmlFor="preset-name">Preset name</Label>
-                <Input
-                  id="preset-name"
-                  autoFocus
-                  value={presetName}
-                  onChange={(e) => setPresetName(e.target.value)}
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter" && presetName.trim() && objectTypeId) {
-                      savePreset(objectTypeId, presetName.trim());
-                      setSaveOpen(false);
-                    }
-                  }}
-                  placeholder="e.g. Return to stock"
-                />
-                <Button
-                  size="sm"
-                  disabled={!presetName.trim()}
-                  onClick={() => {
-                    if (!objectTypeId) return;
-                    savePreset(objectTypeId, presetName.trim());
-                    setSaveOpen(false);
-                  }}
-                >
-                  Save
-                </Button>
-              </PopoverContent>
-            </Popover>
-            {activePreset && (
-              <Button
-                variant="ghost"
-                size="icon"
-                aria-label={`Delete preset ${activePreset.name}`}
-                onClick={() => objectTypeId && deletePreset(objectTypeId, activePreset.id)}
-              >
-                <Trash2 />
-              </Button>
-            )}
-          </div>
-          <div className="flex items-center gap-3">
-            <Label className="w-56 shrink-0">Match the scanned value against</Label>
-            <Select value={config.lookup} onValueChange={(lookup) => updateConfig({ lookup })}>
-              <SelectTrigger className="h-9 w-56">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value={SEARCH_KEY}>Key</SelectItem>
-                {lookupOptions.map((a) => (
-                  <SelectItem key={a.id} value={a.id}>
-                    {a.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-          <div className="grid gap-2">
-            <Label>Fields to update on each scan</Label>
-            {config.actions.map((a) => (
-              <ScanActionRow
-                key={a.id}
-                action={a}
-                attrs={actionOptions}
-                statuses={statuses.data ?? []}
-                onChange={(patch) => updateAction(a.id, patch)}
-                onRemove={() => updateConfig({ actions: config.actions.filter((x) => x.id !== a.id) })}
-              />
-            ))}
-            <div>
-              <Button variant="outline" size="sm" onClick={addAction} disabled={actionOptions.length === 0}>
-                <Plus /> Add field
-              </Button>
-            </div>
-            {incomplete && <p className="text-xs text-amber-600">Choose a value for every "Set to" field before scanning.</p>}
-          </div>
-        </Card>
+      <div className={cn("grid gap-4 lg:min-h-0 lg:flex-1", panelOpen ? "lg:grid-cols-[20rem_minmax(0,1fr)]" : "grid-cols-1")}>
+        {panelOpen && (
+          <ScanOptionsPanel
+            config={config}
+            presets={presets}
+            activePreset={activePreset}
+            modified={modified}
+            lookupOptions={lookupOptions}
+            actionOptions={actionOptions}
+            statuses={statuses.data ?? []}
+            incomplete={incomplete}
+            onConfigChange={updateConfig}
+            onUpdateAction={updateAction}
+            onAddAction={addAction}
+            onLoadPreset={(id) => objectTypeId && loadPreset(objectTypeId, id)}
+            onSavePreset={(name) => objectTypeId && savePreset(objectTypeId, name)}
+            onUpdatePreset={(id) => objectTypeId && updatePreset(objectTypeId, id)}
+            onDeletePreset={(id) => objectTypeId && deletePreset(objectTypeId, id)}
+            onClose={closePanel}
+          />
+        )}
 
-        <Card className={cn("grid gap-3 border-2 p-5 transition-colors", lastTone && BANNER[lastTone])}>
+        <div className="flex min-h-0 min-w-0 flex-col gap-4">
+        <Card className={cn("grid shrink-0 gap-3 border-2 p-5 transition-colors", lastTone && BANNER[lastTone])}>
           <div className="flex items-center gap-3">
             <ScanLine className="size-6 shrink-0 text-muted-foreground" />
             <Input
@@ -367,7 +288,7 @@ export function QuickScanPage() {
               onChange={(e) => setInput(e.target.value)}
               onKeyDown={(e) => e.key === "Enter" && (e.preventDefault(), submit())}
               placeholder={ready ? `Scan or type ${lookupLabel} and press Enter` : "Add at least one field to update to start scanning"}
-              className="h-12 text-lg"
+              className="h-14 text-xl"
               aria-label="Scan input"
               autoComplete="off"
               spellCheck={false}
@@ -388,22 +309,34 @@ export function QuickScanPage() {
               )}
             </div>
             <div className="flex gap-4 text-muted-foreground">
-              <span>Updated <b className="text-foreground">{counts.updated}</b></span>
-              <span>No change <b className="text-foreground">{counts.unchanged}</b></span>
-              <span>Errors <b className="text-foreground">{counts.errors}</b></span>
+              <span className="inline-flex items-center gap-1.5" title="Updated">
+                <CheckCircle2 className="size-4 text-green-600 dark:text-green-400" /> <b className="text-foreground">{counts.updated}</b>
+              </span>
+              <span className="inline-flex items-center gap-1.5" title="No change">
+                <MinusCircle className="size-4 text-amber-600 dark:text-amber-400" /> <b className="text-foreground">{counts.unchanged}</b>
+              </span>
+              <span className="inline-flex items-center gap-1.5" title="Errors">
+                <XCircle className="size-4 text-red-600 dark:text-red-400" /> <b className="text-foreground">{counts.errors}</b>
+              </span>
             </div>
           </div>
+          {!panelOpen && (
+            <p className="truncate text-xs text-muted-foreground" title={summary.join(" · ")}>
+              Matching on {lookupLabel}
+              {summary.map((s) => ` · ${s}`).join("")}
+            </p>
+          )}
         </Card>
 
-        <Card className="overflow-hidden">
-          <div className="flex items-center justify-between border-b px-5 py-3">
+        <Card className="flex min-h-64 flex-1 flex-col overflow-hidden lg:min-h-0">
+          <div className="flex shrink-0 items-center justify-between border-b px-5 py-3">
             <h2 className="font-medium">Scan log</h2>
             <span className="text-xs text-muted-foreground">Session started {new Date(sessionStart).toLocaleTimeString()}</span>
           </div>
           {rows.length === 0 ? (
-            <p className="p-5 text-sm text-muted-foreground">No scans in this session yet.</p>
+            <p className="flex flex-1 items-center justify-center p-5 text-sm text-muted-foreground">No scans in this session yet.</p>
           ) : (
-            <ul className="divide-y">
+            <ul className="min-h-0 flex-1 divide-y overflow-y-auto">
               {rows.map((r) => {
                 const meta = STATE_META[r.state];
                 return (
@@ -430,6 +363,7 @@ export function QuickScanPage() {
             </ul>
           )}
         </Card>
+        </div>
       </div>
     </div>
   );

@@ -2,7 +2,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use tauri::State;
 
-use crate::connection::{AppState, AuthType, ConnectionInfo, StoredConnection};
+use crate::connection::{AppState, ConnectionInfo, StoredConnection};
 use crate::error::{AppError, AppResult};
 use crate::{crypto, files};
 
@@ -20,7 +20,6 @@ pub struct ExportRequest {
 #[serde(rename_all = "camelCase")]
 pub struct ConnectionPreview {
     site_url: String,
-    auth_type: AuthType,
     email: String,
 }
 
@@ -112,7 +111,6 @@ pub async fn import_settings_read(path: String, passphrase: Option<String>) -> A
     let mut opened = open_blocking(path, passphrase).await?;
     let connection = extract_connection(&opened).map(|c| ConnectionPreview {
         site_url: c.site_url,
-        auth_type: c.auth_type,
         email: c.email,
     });
     if let Some(o) = opened.doc.as_object_mut() {

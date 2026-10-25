@@ -1,5 +1,5 @@
 import { invoke, isTauri } from "@tauri-apps/api/core";
-import type { AuthType, ConnectionInfo } from "./types";
+import type { ConnectionInfo } from "./types";
 
 export type ApiErrorKind =
   | "notConnected"
@@ -63,7 +63,6 @@ export function assetsRequest<T>(
 
 export interface ConnectInput {
   siteUrl: string;
-  authType: AuthType;
   email: string;
   secret?: string;
 }
@@ -92,7 +91,7 @@ export interface ImportPreview {
   /** Settings JSON with any connection data removed; the token never reaches the UI. */
   settings: string;
   encrypted: boolean;
-  connection: { siteUrl: string; authType: AuthType; email: string } | null;
+  connection: { siteUrl: string; email: string } | null;
 }
 
 export const backupApi = {

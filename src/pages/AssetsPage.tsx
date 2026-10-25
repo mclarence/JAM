@@ -12,6 +12,7 @@ import {
 } from "@/api/queries";
 import type { AssetObject } from "@/api/types";
 import { AssetGrid } from "@/components/assets/AssetGrid";
+import { BatchUpdateDialog } from "@/components/assets/BatchUpdateDialog";
 import { ColumnDrawer } from "@/components/assets/ColumnDrawer";
 import { CreateAssetDialog } from "@/components/assets/CreateAssetDialog";
 import { DetailDrawer } from "@/components/assets/DetailDrawer";
@@ -49,6 +50,7 @@ export function AssetsPage() {
   const [rowSelection, setRowSelection] = useState<RowSelectionState>({});
   const [selectingAll, setSelectingAll] = useState(false);
   const [createOpen, setCreateOpen] = useState(false);
+  const [batchOpen, setBatchOpen] = useState(false);
   const debouncedSearch = useDebounce(search, 300);
 
   const sortAttr = sorting[0] ? attributes.find((a) => a.id === sorting[0].id) : undefined;
@@ -237,6 +239,15 @@ export function AssetsPage() {
         onSelectAllMatching={selectAllMatching}
         selectingAll={selectingAll}
         onClear={() => setRowSelection({})}
+        onBatchEdit={() => setBatchOpen(true)}
+      />
+
+      <BatchUpdateDialog
+        open={batchOpen}
+        onOpenChange={setBatchOpen}
+        objects={selectedObjects}
+        attributes={attributes}
+        statuses={statuses.data ?? []}
       />
 
       <DetailDrawer fallback={findLoaded} />

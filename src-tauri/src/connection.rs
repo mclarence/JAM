@@ -12,18 +12,10 @@ const KEYRING_SERVICE: &str = "com.jiraassets.manager";
 const KEYRING_USER: &str = "connection";
 const KEYRING_NETWORK: &str = "network";
 
-#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
-#[serde(rename_all = "lowercase")]
-pub enum AuthType {
-    Basic,
-    Bearer,
-}
-
 #[derive(Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct StoredConnection {
     pub site_url: String,
-    pub auth_type: AuthType,
     pub email: String,
     pub secret: String,
     pub cloud_id: String,
@@ -33,13 +25,12 @@ pub struct StoredConnection {
 
 impl StoredConnection {
     pub fn auth_header(&self) -> String {
-        auth_header(self.auth_type, &self.email, &self.secret)
+        auth_header(&self.email, &self.secret)
     }
 
     pub fn info(&self) -> ConnectionInfo {
         ConnectionInfo {
             site_url: self.site_url.clone(),
-            auth_type: self.auth_type,
             email: self.email.clone(),
             cloud_id: self.cloud_id.clone(),
             workspace_id: self.workspace_id.clone(),
@@ -52,7 +43,6 @@ impl StoredConnection {
 #[serde(rename_all = "camelCase")]
 pub struct ConnectionInfo {
     pub site_url: String,
-    pub auth_type: AuthType,
     pub email: String,
     pub cloud_id: String,
     pub workspace_id: String,
@@ -62,7 +52,6 @@ pub struct ConnectionInfo {
 #[serde(rename_all = "camelCase")]
 pub struct ConnectInput {
     pub site_url: String,
-    pub auth_type: AuthType,
     #[serde(default)]
     pub email: String,
     /// When omitted, the previously stored secret is reused.
@@ -147,14 +136,9 @@ impl AppState {
     }
 }
 
-fn auth_header(auth_type: AuthType, email: &str, secret: &str) -> String {
-    match auth_type {
-        AuthType::Basic => {
-            let raw = format!("{email}:{secret}");
-            format!("Basic {}", base64::engine::general_purpose::STANDARD.encode(raw))
-        }
-        AuthType::Bearer => format!("Bearer {secret}"),
-    }
+fn auth_header(email: &str, secret: &str) -> String {
+    let raw = format!("{email}:{secret}");
+    format!("Basic {}", base64::engine::general_purpose::STANDARD.encode(raw))
 }
 
 /// Only Atlassian Cloud sites are accepted so credentials are never sent elsewhere.
@@ -184,7 +168,10 @@ pub fn normalize_site(input: &str) -> AppResult<String> {
 fn load_from_keyring() -> AppResult<Option<StoredConnection>> {
     let entry = keyring::Entry::new(KEYRING_SERVICE, KEYRING_USER)?;
     match entry.get_password() {
-        Ok(json) => Ok(serde_json::from_str(&json).ok()),
+        Ok(json) => Ok(serde_json::from_str::<StoredConnection>(&json)
+            .ok()
+            // Connections saved by the removed Bearer mode have no email and can no longer authenticate.
+            .filter(|c| !c.email.trim().is_empty())),
         Err(keyring::Error::NoEntry) => Ok(None),
         Err(e) => Err(e.into()),
     }
@@ -269,7 +256,7 @@ impl StoredConnection {
         if !api_base_candidates(&self.cloud_id, &self.workspace_id).contains(&self.api_base) {
             return Err(bad("unexpected API address"));
         }
-        if self.secret.trim().is_empty() || (self.auth_type == AuthType::Basic && self.email.is_empty()) {
+        if self.secret.trim().is_empty() || self.email.is_empty() {
             return Err(bad("missing credentials"));
         }
         Ok(self)
@@ -278,10 +265,10 @@ impl StoredConnection {
 
 async fn discover(client: &reqwest::Client, input: &ConnectInput, secret: &str) -> AppResult<StoredConnection> {
     let site_url = normalize_site(&input.site_url)?;
-    if input.auth_type == AuthType::Basic && input.email.trim().is_empty() {
-        return Err(AppError::Invalid("Email is required for basic auth".into()));
+    if input.email.trim().is_empty() {
+        return Err(AppError::Invalid("Email is required".into()));
     }
-    let auth = auth_header(input.auth_type, input.email.trim(), secret);
+    let auth = auth_header(input.email.trim(), secret);
 
     let tenant = get_json(client, &format!("{site_url}/_edge/tenant_info"), None).await?;
     let cloud_id = tenant
@@ -292,10 +279,7 @@ async fn discover(client: &reqwest::Client, input: &ConnectInput, secret: &str) 
 
     // Scoped tokens only work on the gateway; classic tokens may only work on the site URL.
     let gateway_url = format!("https://api.atlassian.com/ex/jira/{cloud_id}/rest/servicedeskapi/assets/workspace");
-    let workspace_urls = match input.auth_type {
-        AuthType::Basic => vec![gateway_url, format!("{site_url}/rest/servicedeskapi/assets/workspace")],
-        AuthType::Bearer => vec![gateway_url],
-    };
+    let workspace_urls = [gateway_url, format!("{site_url}/rest/servicedeskapi/assets/workspace")];
     let mut ws_result = None;
     for url in &workspace_urls {
         match get_json(client, url, Some(&auth)).await {
@@ -324,7 +308,6 @@ async fn discover(client: &reqwest::Client, input: &ConnectInput, secret: &str) 
             Ok(_) => {
                 return Ok(StoredConnection {
                     site_url,
-                    auth_type: input.auth_type,
                     email: input.email.trim().to_string(),
                     secret: secret.to_string(),
                     cloud_id,
