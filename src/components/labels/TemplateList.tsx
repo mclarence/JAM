@@ -25,7 +25,7 @@ export function TemplateList() {
   };
 
   return (
-    <div className="flex w-60 shrink-0 flex-col border-r">
+    <div className="flex w-44 shrink-0 flex-col border-r xl:w-60">
       <div className="flex items-center justify-between border-b p-3">
         <span className="text-sm font-medium">Templates</span>
         <Button size="sm" variant="outline" onClick={() => create(labelDefaults)}>

@@ -32,6 +32,14 @@ export default function App() {
   const page = useUi((s) => s.page);
   const ready = usePersistedStoresReady();
 
+  useEffect(() => {
+    const mq = window.matchMedia("(max-width: 1199px)");
+    const sync = () => mq.matches && useUi.getState().setSidebarCollapsed(true);
+    sync();
+    mq.addEventListener("change", sync);
+    return () => mq.removeEventListener("change", sync);
+  }, []);
+
   return (
     <div className="flex h-full flex-col">
       <TitleBar />

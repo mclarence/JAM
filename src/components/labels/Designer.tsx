@@ -183,16 +183,16 @@ export function Designer({ template }: { template: LabelTemplate }) {
       onDragEnd={onDragEnd}
       onDragCancel={() => setDragging(null)}
     >
-      <div className="flex min-h-0 flex-1">
+      <div className="flex min-h-0 min-w-0 flex-1">
         {/* Palette */}
-        <div className="flex w-52 shrink-0 flex-col gap-4 overflow-auto border-r p-3">
-          <div className="grid gap-1.5">
+        <div className="flex w-40 shrink-0 flex-col gap-4 overflow-auto border-r p-3 [scrollbar-gutter:stable] xl:w-52">
+          <div className="grid grid-cols-[minmax(0,1fr)] gap-1.5">
             <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Elements</p>
             <PaletteButton item={{ kind: "text" }} icon={<Type />} label="Text" onClick={place} />
             <PaletteButton item={{ kind: "qrcode" }} icon={<QrCode />} label="QR Code" onClick={place} />
             <PaletteButton item={{ kind: "code128" }} icon={<Barcode />} label="Code 128" onClick={place} />
           </div>
-          <div className="grid gap-1.5">
+          <div className="grid grid-cols-[minmax(0,1fr)] gap-1.5">
             <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Attributes</p>
             {!objectTypeId && <p className="text-xs text-muted-foreground">Select an object type in Settings.</p>}
             {tokens.map((t) => (
@@ -203,45 +203,49 @@ export function Designer({ template }: { template: LabelTemplate }) {
 
         {/* Canvas */}
         <div className="flex min-w-0 flex-1 flex-col">
-          <div className="flex items-center gap-2 border-b px-3 py-2">
-            <Tooltip content="Zoom out">
-              <Button variant="ghost" size="iconSm" onClick={() => setZoom((z) => Math.max(0.5, z - 0.5))} aria-label="Zoom out">
-                <ZoomOut />
-              </Button>
-            </Tooltip>
-            <span className="w-12 text-center text-xs tabular-nums">{Math.round(zoom * 100)}%</span>
-            <Tooltip content="Zoom in">
-              <Button variant="ghost" size="iconSm" onClick={() => setZoom((z) => Math.min(8, z + 0.5))} aria-label="Zoom in">
-                <ZoomIn />
-              </Button>
-            </Tooltip>
-            <Separator orientation="vertical" className="mx-1 h-5" />
-            <Label className="flex items-center gap-2 text-xs font-normal">
-              <Switch checked={snap} onCheckedChange={setSnap} /> <Grid3x3 className="size-3.5" /> Snap
-            </Label>
-            <Select value={String(gridMm)} onValueChange={(v) => setGridMm(Number(v))}>
-              <SelectTrigger className="h-7 w-24 text-xs">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {[0.5, 1, 2, 5].map((g) => (
-                  <SelectItem key={g} value={String(g)}>
-                    {g} mm
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            <div className="flex-1" />
-            <Label className="flex items-center gap-2 text-xs font-normal">
-              <Switch checked={useSample} onCheckedChange={setUseSample} disabled={!sample.data} /> Preview
-            </Label>
-            <PreviewPicker
-              objectTypeId={objectTypeId}
-              current={sample.data ?? null}
-              custom={!!previewId}
-              disabled={!connection.data || !objectTypeId}
-              onPick={setPreviewId}
-            />
+          <div className="flex flex-wrap items-center gap-x-3 gap-y-2 border-b px-3 py-2">
+            <div className="flex shrink-0 items-center gap-1">
+              <Tooltip content="Zoom out">
+                <Button variant="ghost" size="iconSm" onClick={() => setZoom((z) => Math.max(0.5, z - 0.5))} aria-label="Zoom out">
+                  <ZoomOut />
+                </Button>
+              </Tooltip>
+              <span className="w-10 text-center text-xs tabular-nums">{Math.round(zoom * 100)}%</span>
+              <Tooltip content="Zoom in">
+                <Button variant="ghost" size="iconSm" onClick={() => setZoom((z) => Math.min(8, z + 0.5))} aria-label="Zoom in">
+                  <ZoomIn />
+                </Button>
+              </Tooltip>
+            </div>
+            <div className="flex shrink-0 items-center gap-2">
+              <Label className="flex items-center gap-2 text-xs font-normal">
+                <Switch checked={snap} onCheckedChange={setSnap} /> <Grid3x3 className="size-3.5" /> Snap
+              </Label>
+              <Select value={String(gridMm)} onValueChange={(v) => setGridMm(Number(v))}>
+                <SelectTrigger className="h-7 w-20 text-xs">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {[0.5, 1, 2, 5].map((g) => (
+                    <SelectItem key={g} value={String(g)}>
+                      {g} mm
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="flex min-w-0 flex-1 basis-56 items-center justify-end gap-2">
+              <Label className="flex shrink-0 items-center gap-2 text-xs font-normal">
+                <Switch checked={useSample} onCheckedChange={setUseSample} disabled={!sample.data} /> Preview
+              </Label>
+              <PreviewPicker
+                objectTypeId={objectTypeId}
+                current={sample.data ?? null}
+                custom={!!previewId}
+                disabled={!connection.data || !objectTypeId}
+                onPick={setPreviewId}
+              />
+            </div>
           </div>
 
           <div className="flex-1 overflow-auto bg-muted/40 p-10" onMouseDown={(e) => e.target === e.currentTarget && setSelectedId(null)}>
@@ -300,7 +304,7 @@ export function Designer({ template }: { template: LabelTemplate }) {
         </div>
 
         {/* Inspector */}
-        <div className="w-72 shrink-0 overflow-auto border-l p-4">
+        <div className="w-60 shrink-0 overflow-auto border-l p-4 xl:w-72">
           {selected ? (
             <ElementInspector
               el={selected}
@@ -378,6 +382,7 @@ function PaletteButton({
     <button
       ref={setNodeRef}
       type="button"
+      title={label}
       {...attributes}
       {...listeners}
       onClick={() => onClick(item)}
@@ -417,7 +422,7 @@ function ElementInspector({
   onDelete: () => void;
 }) {
   return (
-    <div className="grid gap-4">
+    <div className="grid grid-cols-[minmax(0,1fr)] gap-4">
       <div className="flex items-center justify-between">
         <h3 className="text-sm font-medium">
           {el.kind === "text" ? "Text" : el.symbology === "qrcode" ? "QR Code" : "Code 128"}
@@ -467,7 +472,7 @@ function PreviewPicker({
   return (
     <Popover open={open} onOpenChange={setOpen}>
       <PopoverTrigger asChild>
-        <Button variant="outline" size="sm" className="max-w-64" disabled={disabled}>
+        <Button variant="outline" size="sm" className="min-w-0 max-w-64 flex-1 justify-between" disabled={disabled}>
           <span className="truncate">{current ? `${current.objectKey} \u00b7 ${current.label}` : "Choose asset"}</span>
           <ChevronsUpDown className="opacity-50" />
         </Button>
@@ -663,7 +668,7 @@ function TemplateInspector({ template, onChange }: { template: LabelTemplate; on
   const setSheet = (patch: Partial<Extract<SheetLayout, { mode: "sheet" }>>) => sheet && onChange({ layout: { ...sheet, ...patch } });
 
   return (
-    <div className="grid gap-4">
+    <div className="grid grid-cols-[minmax(0,1fr)] gap-4">
       <h3 className="text-sm font-medium">Template</h3>
       <div className="grid gap-1">
         <Label className="text-xs text-muted-foreground">Name</Label>

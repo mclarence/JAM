@@ -32,6 +32,7 @@ interface UiState {
 
   navigate: (page: Page, settingsTab?: SettingsTab) => void;
   toggleSidebar: () => void;
+  setSidebarCollapsed: (collapsed: boolean) => void;
   setSearch: (search: string) => void;
   setSearchField: (field: string) => void;
   setPreviewObjectId: (id: string | null) => void;
@@ -60,6 +61,7 @@ export const useUi = create<UiState>((set) => ({
 
   navigate: (page, settingsTab) => set((s) => ({ page, settingsTab: settingsTab ?? s.settingsTab })),
   toggleSidebar: () => set((s) => ({ sidebarCollapsed: !s.sidebarCollapsed })),
+  setSidebarCollapsed: (sidebarCollapsed) => set({ sidebarCollapsed }),
   setSearch: (search) => set({ search }),
   setSearchField: (searchField) => set({ searchField }),
   setPreviewObjectId: (previewObjectId) => set({ previewObjectId }),

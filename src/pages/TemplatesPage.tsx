@@ -14,7 +14,7 @@ export function TemplatesPage() {
   const template = templates.find((t) => t.id === selectedId) ?? templates[0] ?? null;
 
   return (
-    <div className="flex min-h-0 flex-1">
+    <div className="flex min-h-0 min-w-0 flex-1">
       <TemplateList />
       {template ? (
         <Designer key={template.id} template={template} />
