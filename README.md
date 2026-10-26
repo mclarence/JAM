@@ -5,6 +5,15 @@ A cross-platform desktop app (Windows, macOS, Linux) for managing IT assets stor
 > [!WARNING]
 > **This project is fully AI-generated ("vibe coded").** The code, configuration and this documentation were produced by an AI assistant with human direction and light review. It has not had a formal security audit or thorough testing. Review the code before using it against production data, and use at your own risk.
 
+> [!CAUTION]
+> ## READ BEFORE USING: THIS APP ASSUMES A SPECIFIC JIRA ASSETS SCHEMA LAYOUT
+>
+> **JAM is built around ONE setup: a single schema ("XYZ Enterprises Assets") where EACH BRANCH IS AN OBJECT TYPE, and every branch object type shares the same common attributes (`Asset Tag`, `CPU`, `Model`, ...).**
+>
+> **If your Assets schema is organised by kind of asset instead (an "Assets" schema with object types such as `Software`, `Laptop`, `Desktop`, `Mobile Device`), this software MAY NOT WORK FOR YOU.**
+>
+> See [Assumptions about your Assets schema](#assumptions-about-your-assets-schema) for details.
+
 ## Screenshots
 
 > Screenshots are not yet included. Add images to `docs/screenshots/` using the file names below and they will render here.
@@ -73,6 +82,24 @@ JAM talks to the **Jira Assets REST API on Atlassian Cloud**, so you need:
 
 - An Atlassian Cloud site with Jira Service Management Assets enabled.
 - An [Atlassian API token](https://id.atlassian.com/manage/api-tokens) for an account that can access the assets workspace.
+
+### Assumptions about your Assets schema
+
+> [!CAUTION]
+> **JAM is NOT a general-purpose Jira Assets client. It only fits schemas laid out as described below.**
+
+JAM was built around one specific setup and **may not suit yours**. It assumes a single schema (for example "XYZ Enterprises Assets") where **each branch is its own object type**, and every one of those object types shares the same set of common attributes such as `Asset Tag`, `CPU` and `Model`. The app works on one schema and one object type at a time, so you switch between branches by changing the primary object type.
+
+```
+XYZ Enterprises Assets          <- schema
+├── Branch A                    <- object type (attributes: Asset Tag, CPU, Model, ...)
+├── Branch B                    <- object type (same attributes)
+└── Branch C                    <- object type (same attributes)
+```
+
+**If your schema is instead organised by kind of asset**, with object types such as `Software`, `Laptop`, `Desktop` or `Mobile Device` under a general "Assets" schema, **JAM may not work for you.** Features such as the asset tag template, Quick Scan lookups, batch updates and label placeholders are all configured per object type and assume attributes are consistent within it.
+
+Treat it as a starting point and expect to adapt the code to your own schema layout.
 
 ## Installation
 
