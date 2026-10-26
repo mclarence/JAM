@@ -1,7 +1,7 @@
 import { create } from "zustand";
 
 export type Page = "dashboard" | "assets" | "quickscan" | "templates" | "settings";
-export type SettingsTab = "connection" | "schema" | "assetTag" | "status" | "labels" | "backup";
+export type SettingsTab = "connection" | "schema" | "assetTag" | "status" | "labels" | "backup" | "updates";
 
 export interface Notification {
   id: string;

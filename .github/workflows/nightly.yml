@@ -1,0 +1,110 @@
+name: Nightly
+
+on:
+  push:
+    branches: [main]
+    paths-ignore:
+      - "docs/**"
+      - "**/*.md"
+
+# A newer push supersedes an in-flight nightly.
+concurrency:
+  group: nightly
+  cancel-in-progress: true
+
+permissions:
+  contents: write
+
+jobs:
+  prepare:
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+      release_id: ${{ steps.release.outputs.release_id }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Compute nightly version
+        id: version
+        run: |
+          base=$(jq -r .version src-tauri/tauri.conf.json | sed 's/-.*//')
+          echo "version=${base}-nightly.${GITHUB_RUN_NUMBER}" >> "$GITHUB_OUTPUT"
+
+      # Replaces the rolling release so latest.json only ever describes the newest build.
+      - name: Recreate the nightly release
+        id: release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release delete nightly --cleanup-tag --yes || true
+          gh release create nightly \
+            --prerelease \
+            --target "$GITHUB_SHA" \
+            --title "Nightly ${{ steps.version.outputs.version }}" \
+            --notes "Automated build of ${GITHUB_SHA} (${{ steps.version.outputs.version }})."
+          id=$(gh api "repos/${GITHUB_REPOSITORY}/releases/tags/nightly" --jq .id)
+          echo "release_id=${id}" >> "$GITHUB_OUTPUT"
+
+  build:
+    needs: prepare
+    strategy:
+      fail-fast: false
+      # tauri-action merges each platform into one latest.json; parallel jobs would race on it.
+      max-parallel: 1
+      matrix:
+        include:
+          - os: macos-latest
+            args: --target aarch64-apple-darwin --bundles app,dmg
+            rust_targets: aarch64-apple-darwin
+          - os: windows-latest
+            args: --bundles nsis
+            rust_targets: ""
+          - os: ubuntu-22.04
+            args: --bundles appimage
+            rust_targets: ""
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Linux dependencies
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf libdbus-1-dev pkg-config libssl-dev
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.rust_targets }}
+
+      - uses: swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri -> target
+
+      - run: pnpm install --frozen-lockfile
+
+      - name: Stamp version
+        run: node .github/scripts/set-version.mjs "${{ needs.prepare.outputs.version }}"
+
+      - uses: tauri-apps/tauri-action@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        with:
+          tauriScript: pnpm tauri
+          releaseId: ${{ needs.prepare.outputs.release_id }}
+          # Without tagName, latest.json would link to /releases/latest/, which never points at a prerelease.
+          tagName: nightly
+          prerelease: true
+          uploadUpdaterJson: true
+          updaterJsonPreferNsis: true
+          args: ${{ matrix.args }}

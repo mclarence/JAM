@@ -5,6 +5,7 @@ import { ConnectionTab } from "@/components/settings/ConnectionTab";
 import { LabelDefaultsTab } from "@/components/settings/LabelDefaultsTab";
 import { SchemaTab } from "@/components/settings/SchemaTab";
 import { StatusColorsTab } from "@/components/settings/StatusColorsTab";
+import { UpdatesTab } from "@/components/settings/UpdatesTab";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/overlays";
 import { useUi, type SettingsTab } from "@/store/ui";
 
@@ -21,6 +22,7 @@ export function SettingsPage() {
           <TabsTrigger value="status">Status Colours</TabsTrigger>
           <TabsTrigger value="labels">Label Defaults</TabsTrigger>
           <TabsTrigger value="backup">Import / Export</TabsTrigger>
+          <TabsTrigger value="updates">Updates</TabsTrigger>
         </TabsList>
         <TabsContent value="connection">
           <ConnectionTab />
@@ -39,6 +41,9 @@ export function SettingsPage() {
         </TabsContent>
         <TabsContent value="backup">
           <BackupTab />
+        </TabsContent>
+        <TabsContent value="updates">
+          <UpdatesTab />
         </TabsContent>
       </Tabs>
     </div>

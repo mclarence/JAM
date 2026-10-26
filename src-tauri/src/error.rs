@@ -23,6 +23,8 @@ pub enum AppError {
     Invalid(String),
     #[error("File error: {0}")]
     Io(String),
+    #[error("Update error: {0}")]
+    Update(String),
 }
 
 impl AppError {
@@ -39,6 +41,7 @@ impl AppError {
             AppError::Keyring(_) => "keyring",
             AppError::Invalid(_) => "invalid",
             AppError::Io(_) => "io",
+            AppError::Update(_) => "update",
         }
     }
 

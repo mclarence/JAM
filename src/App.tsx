@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { useGlobalHotkeys } from "@/hooks/useGlobalHotkeys";
+import { useAutoUpdate } from "@/hooks/useAutoUpdate";
 import { useSettings } from "@/store/settings";
 import { useTemplates } from "@/store/templates";
 import { useUi } from "@/store/ui";
@@ -27,6 +28,7 @@ function usePersistedStoresReady() {
 
 export default function App() {
   useGlobalHotkeys();
+  useAutoUpdate();
   const page = useUi((s) => s.page);
   const ready = usePersistedStoresReady();
 

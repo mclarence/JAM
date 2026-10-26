@@ -5,6 +5,7 @@ mod error;
 mod files;
 mod http;
 mod proxy;
+mod updater;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
@@ -12,7 +13,9 @@ pub fn run() {
         .plugin(tauri_plugin_store::Builder::default().build())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_opener::init())
+        .plugin(tauri_plugin_updater::Builder::new().build())
         .manage(connection::AppState::new())
+        .manage(updater::UpdaterState::default())
         .invoke_handler(tauri::generate_handler![
             connection::connect,
             connection::get_connection,
@@ -28,6 +31,9 @@ pub fn run() {
             backup::import_settings_read,
             backup::import_settings_connection,
             files::open_pdf,
+            updater::check_update,
+            updater::download_update,
+            updater::install_update,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

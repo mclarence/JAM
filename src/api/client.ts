@@ -1,4 +1,4 @@
-import { invoke, isTauri } from "@tauri-apps/api/core";
+import { Channel, invoke, isTauri } from "@tauri-apps/api/core";
 import type { ConnectionInfo } from "./types";
 
 export type ApiErrorKind =
@@ -13,6 +13,7 @@ export type ApiErrorKind =
   | "keyring"
   | "invalid"
   | "io"
+  | "update"
   | "unknown";
 
 export class ApiError extends Error {
@@ -106,4 +107,24 @@ export const backupApi = {
 export const fileApi = {
   savePdf: (path: string, dataB64: string) => call<void>("save_pdf", { path, dataB64 }),
   openPdf: (fileName: string, dataB64: string) => call<void>("open_pdf", { fileName, dataB64 }),
+};
+
+export type UpdateChannel = "stable" | "nightly";
+
+export interface UpdateInfo {
+  version: string;
+  notes: string | null;
+}
+
+export const updaterApi = {
+  check: (channel: UpdateChannel) => call<UpdateInfo | null>("check_update", { channel }),
+  download: (onProgress: (downloaded: number, total: number | null) => void) => {
+    const onEvent = new Channel<{ event: "progress"; data: { downloaded: number; total: number | null } } | { event: "finished" }>();
+    onEvent.onmessage = (m) => {
+      if (m.event === "progress") onProgress(m.data.downloaded, m.data.total);
+    };
+    return call<void>("download_update", { onEvent });
+  },
+  /** Relaunches the app, so it does not resolve on success. */
+  install: () => call<void>("install_update"),
 };
