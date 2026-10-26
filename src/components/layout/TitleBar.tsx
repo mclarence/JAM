@@ -5,7 +5,7 @@ import { Input } from "@/components/ui/input";
 import { Kbd } from "@/components/ui/primitives";
 import { Popover, PopoverContent, PopoverTrigger, Tooltip } from "@/components/ui/overlays";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { useAttributes } from "@/api/queries";
+import { useAttributes, useObjectTypes } from "@/api/queries";
 import { sortAttributes } from "@/lib/attributes";
 import { SEARCH_ALL, SEARCH_KEY, isTextarea } from "@/lib/aql";
 import { cn, isMac, modKey } from "@/lib/utils";
@@ -18,6 +18,10 @@ export function TitleBar() {
   const { search, setSearch, searchField, setSearchField, page, navigate, searchFocusTick } = useUi();
   const { resolved, toggle } = useThemeStore();
   const objectTypeId = useSettings((s) => s.objectTypeId);
+  const schemaId = useSettings((s) => s.schemaId);
+  const setObjectType = useSettings((s) => s.setObjectType);
+  const objectTypes = useObjectTypes(schemaId);
+  const selectableTypes = useMemo(() => (objectTypes.data ?? []).filter((t) => !t.abstractObjectType), [objectTypes.data]);
   const attrsQuery = useAttributes(objectTypeId);
   // The built-in "Key" option already covers the object's Key attribute.
   const attributes = useMemo(
@@ -55,7 +59,19 @@ export function TitleBar() {
       </div>
 
       <div data-tauri-drag-region className="flex flex-1 justify-center">
-        <div className="flex w-full max-w-xl items-center gap-2">
+        <div className="flex w-full max-w-2xl items-center gap-2">
+          <Select value={objectTypeId ?? ""} onValueChange={setObjectType} disabled={!schemaId}>
+            <SelectTrigger className="h-8 w-44 shrink-0 bg-background" aria-label="Object type">
+              <SelectValue placeholder={schemaId ? "Object type" : "No schema"} />
+            </SelectTrigger>
+            <SelectContent>
+              {selectableTypes.map((t) => (
+                <SelectItem key={t.id} value={t.id}>
+                  {t.name}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
           <Select value={activeField} onValueChange={setSearchField}>
             <SelectTrigger className="h-8 w-40 shrink-0 bg-background" aria-label="Search field">
               <SelectValue />
