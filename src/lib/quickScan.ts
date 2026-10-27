@@ -28,9 +28,23 @@ export function actionAttributes(attrs: ObjectTypeAttribute[]) {
   );
 }
 
-export function lookupQuery(objectTypeId: string, lookup: string, attrs: ObjectTypeAttribute[], text: string) {
-  const field = lookup === SEARCH_KEY ? "Key" : aqlAttr(attrs.find((a) => a.id === lookup)?.name ?? "Key");
-  return `objectTypeId = ${Number(objectTypeId)} AND ${field} = ${aqlString(text)}`;
+/** Selected lookups that still exist on the object type; Key when none remain. */
+export function validLookups(lookups: string[], attrs: ObjectTypeAttribute[]) {
+  const valid = lookups.filter((l) => l === SEARCH_KEY || attrs.some((a) => a.id === l));
+  return valid.length ? valid : [SEARCH_KEY];
+}
+
+export function lookupLabel(lookups: string[], attrs: ObjectTypeAttribute[]) {
+  return lookups.map((l) => (l === SEARCH_KEY ? "Key" : (attrs.find((a) => a.id === l)?.name ?? "Key"))).join(", ");
+}
+
+export function lookupQuery(objectTypeId: string, lookups: string[], attrs: ObjectTypeAttribute[], text: string) {
+  const value = aqlString(text);
+  const terms = validLookups(lookups, attrs).map((l) => {
+    const field = l === SEARCH_KEY ? "Key" : aqlAttr(attrs.find((a) => a.id === l)!.name);
+    return `${field} = ${value}`;
+  });
+  return `objectTypeId = ${Number(objectTypeId)} AND (${terms.join(" OR ")})`;
 }
 
 function sameValue(attr: ObjectTypeAttribute, current: string, target: string) {

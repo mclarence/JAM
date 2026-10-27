@@ -16,8 +16,8 @@ export interface ScanAction {
 }
 
 export interface ScanConfig {
-  /** SEARCH_KEY or an attribute id to match the scanned text against. */
-  lookup: string;
+  /** SEARCH_KEY and/or attribute ids; a scan matches an asset when any of them equals the text. */
+  lookups: string[];
   actions: ScanAction[];
   /** Preset this setup was loaded from or saved as. */
   presetId?: string | null;
@@ -26,11 +26,11 @@ export interface ScanConfig {
 export interface ScanPreset {
   id: string;
   name: string;
-  lookup: string;
+  lookups: string[];
   actions: ScanAction[];
 }
 
-export const DEFAULT_SCAN_CONFIG: ScanConfig = { lookup: SEARCH_KEY, actions: [] };
+export const DEFAULT_SCAN_CONFIG: ScanConfig = { lookups: [SEARCH_KEY], actions: [] };
 
 interface QuickScanState {
   /** Per object type id. */
@@ -69,7 +69,7 @@ export const useQuickScan = create<QuickScanState>()(
       savePreset: (objectTypeId, name) =>
         set((s) => {
           const cfg = s.configs[objectTypeId] ?? DEFAULT_SCAN_CONFIG;
-          const preset: ScanPreset = { id: crypto.randomUUID(), name, lookup: cfg.lookup, actions: freshIds(cfg.actions) };
+          const preset: ScanPreset = { id: crypto.randomUUID(), name, lookups: [...cfg.lookups], actions: freshIds(cfg.actions) };
           return {
             presets: { ...s.presets, [objectTypeId]: [...(s.presets[objectTypeId] ?? []), preset] },
             configs: { ...s.configs, [objectTypeId]: { ...cfg, presetId: preset.id } },
@@ -82,7 +82,7 @@ export const useQuickScan = create<QuickScanState>()(
             presets: {
               ...s.presets,
               [objectTypeId]: (s.presets[objectTypeId] ?? []).map((p) =>
-                p.id === presetId ? { ...p, lookup: cfg.lookup, actions: freshIds(cfg.actions) } : p,
+                p.id === presetId ? { ...p, lookups: [...cfg.lookups], actions: freshIds(cfg.actions) } : p,
               ),
             },
           };
@@ -105,13 +105,30 @@ export const useQuickScan = create<QuickScanState>()(
           return {
             configs: {
               ...s.configs,
-              [objectTypeId]: { lookup: p.lookup, actions: freshIds(p.actions), presetId: p.id },
+              [objectTypeId]: { lookups: [...p.lookups], actions: freshIds(p.actions), presetId: p.id },
             },
           };
         }),
       setSound: (sound) => set({ sound }),
       setPanelOpen: (panelOpen) => set({ panelOpen }),
     }),
-    { name: "quickscan", storage: fileStorage("quickscan.json"), version: 1 },
+    {
+      name: "quickscan",
+      storage: fileStorage("quickscan.json"),
+      version: 2,
+      // v1 stored a single `lookup` string per config and preset.
+      migrate: (persisted, version) => {
+        const state = persisted as { configs?: Record<string, unknown>; presets?: Record<string, unknown[]> };
+        if (version < 2) {
+          const upgrade = (x: unknown) => {
+            const { lookup, ...rest } = x as { lookup?: string };
+            return { ...rest, lookups: [lookup ?? SEARCH_KEY] };
+          };
+          for (const [k, v] of Object.entries(state.configs ?? {})) state.configs![k] = upgrade(v);
+          for (const [k, list] of Object.entries(state.presets ?? {})) state.presets![k] = list.map(upgrade);
+        }
+        return state as QuickScanState;
+      },
+    },
   ),
 );

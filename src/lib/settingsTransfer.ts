@@ -1,5 +1,6 @@
 import { PAPER_MM, type LabelElement, type LabelTemplate, type SheetLayout, type Unit } from "@/components/labels/model";
 import { foldBaseStyle } from "@/components/labels/richText";
+import { SEARCH_KEY } from "@/lib/aql";
 import type { AssetTagConfig } from "@/lib/assetTag";
 import { COLOR_KEYS, type ColorKey } from "@/lib/statusColors";
 import { useSettings, type AqlPreset, type ColumnPrefs, type PdfOutput } from "@/store/settings";
@@ -108,12 +109,18 @@ function cleanScanAction(a: unknown): ScanAction | null {
   return { id: a.id, attrId: a.attrId, mode: a.mode, value: isStr(a.value) ? a.value : "", display: isStr(a.display) ? a.display : "" };
 }
 
+// Older exports carry a single `lookup` string.
+function cleanLookups(p: Record<string, unknown>) {
+  const list = Array.isArray(p.lookups) ? p.lookups.filter(isStr) : isStr(p.lookup) ? [p.lookup] : [];
+  return list.length ? list : [SEARCH_KEY];
+}
+
 function cleanScanPresets(v: unknown) {
   return mapValues<ScanPreset[]>(v, (list) => {
     if (!Array.isArray(list)) return null;
     return list.flatMap((p) =>
-      isObj(p) && isStr(p.id) && isStr(p.name) && isStr(p.lookup) && Array.isArray(p.actions)
-        ? [{ id: p.id, name: p.name, lookup: p.lookup, actions: p.actions.flatMap((a) => cleanScanAction(a) ?? []) }]
+      isObj(p) && isStr(p.id) && isStr(p.name) && Array.isArray(p.actions)
+        ? [{ id: p.id, name: p.name, lookups: cleanLookups(p), actions: p.actions.flatMap((a) => cleanScanAction(a) ?? []) }]
         : [],
     );
   });

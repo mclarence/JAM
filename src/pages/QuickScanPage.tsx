@@ -11,7 +11,15 @@ import { Input } from "@/components/ui/input";
 import { Card } from "@/components/ui/primitives";
 import { SEARCH_KEY } from "@/lib/aql";
 import { sortAttributes, editorKind } from "@/lib/attributes";
-import { actionAttributes, lookupAttributes, lookupQuery, planChanges, sanitizeScan } from "@/lib/quickScan";
+import {
+  actionAttributes,
+  lookupAttributes,
+  lookupLabel,
+  lookupQuery,
+  planChanges,
+  sanitizeScan,
+  validLookups,
+} from "@/lib/quickScan";
 import { playScanTone, type ScanTone } from "@/lib/scanSound";
 import { cn } from "@/lib/utils";
 import { DEFAULT_SCAN_CONFIG, useQuickScan, type ScanAction, type ScanConfig } from "@/store/quickScan";
@@ -72,16 +80,21 @@ export function QuickScanPage() {
   const lookupOptions = useMemo(() => lookupAttributes(attrs), [attrs]);
   const actionOptions = useMemo(() => actionAttributes(attrs), [attrs]);
   const stored = (objectTypeId ? configs[objectTypeId] : undefined) ?? DEFAULT_SCAN_CONFIG;
-  // A saved lookup attribute that no longer exists (or is the Key attribute) falls back to Key.
-  const lookupValid =
-    !attrsQuery.isSuccess || stored.lookup === SEARCH_KEY || lookupOptions.some((a) => a.id === stored.lookup);
-  const config = lookupValid ? stored : { ...stored, lookup: SEARCH_KEY };
+  // Saved lookup attributes that no longer exist are dropped; with none left it falls back to Key.
+  const config = useMemo(() => {
+    if (!attrsQuery.isSuccess) return stored;
+    const lookups = validLookups(
+      stored.lookups.filter((l) => l === SEARCH_KEY || lookupOptions.some((a) => a.id === l)),
+      attrs,
+    );
+    return { ...stored, lookups };
+  }, [stored, attrsQuery.isSuccess, lookupOptions, attrs]);
   const presets = (objectTypeId && presetsByType[objectTypeId]) || [];
   const activePreset = presets.find((p) => p.id === config.presetId);
-  const signature = (lookup: string, actions: ScanAction[]) =>
-    JSON.stringify([lookup, actions.map((a) => [a.attrId, a.mode, a.value])]);
+  const signature = (lookups: string[], actions: ScanAction[]) =>
+    JSON.stringify([[...lookups].sort(), actions.map((a) => [a.attrId, a.mode, a.value])]);
   const modified =
-    !!activePreset && signature(activePreset.lookup, activePreset.actions) !== signature(config.lookup, config.actions);
+    !!activePreset && signature(activePreset.lookups, activePreset.actions) !== signature(config.lookups, config.actions);
 
   const [rows, setRows] = useState<ScanRow[]>([]);
   const [input, setInput] = useState("");
@@ -99,7 +112,7 @@ export function QuickScanPage() {
 
   const process = async (job: Job): Promise<Partial<ScanRow>> => {
     try {
-      const q = lookupQuery(job.objectTypeId, job.config.lookup, job.attrs, job.text);
+      const q = lookupQuery(job.objectTypeId, job.config.lookups, job.attrs, job.text);
       const found = await assetsApi.searchObjects(q, 0, 2);
       if (found.values.length === 0) return { state: "notFound" };
       if (found.values.length > 1) return { state: "ambiguous", error: "More than one asset matches" };
@@ -221,7 +234,7 @@ export function QuickScanPage() {
     errors: rows.filter((r) => ["notFound", "ambiguous", "failed"].includes(r.state)).length,
   };
   const lastTone = last ? (last.warning && last.state === "updated" ? "warning" : STATE_META[last.state].tone) : null;
-  const lookupLabel = config.lookup === SEARCH_KEY ? "Key" : (attrs.find((a) => a.id === config.lookup)?.name ?? "Key");
+  const matchLabel = lookupLabel(config.lookups, attrs);
 
   const summary = config.actions.map((a) => {
     const name = attrs.find((x) => x.id === a.attrId)?.name ?? "Field";
@@ -287,7 +300,7 @@ export function QuickScanPage() {
               disabled={!ready}
               onChange={(e) => setInput(e.target.value)}
               onKeyDown={(e) => e.key === "Enter" && (e.preventDefault(), submit())}
-              placeholder={ready ? `Scan or type ${lookupLabel} and press Enter` : "Add at least one field to update to start scanning"}
+              placeholder={ready ? `Scan or type ${matchLabel.replace(/, (?=[^,]*$)/, " or ")} and press Enter` : "Add at least one field to update to start scanning"}
               className="h-14 text-xl"
               aria-label="Scan input"
               autoComplete="off"
@@ -322,7 +335,7 @@ export function QuickScanPage() {
           </div>
           {!panelOpen && (
             <p className="truncate text-xs text-muted-foreground" title={summary.join(" · ")}>
-              Matching on {lookupLabel}
+              Matching on {matchLabel}
               {summary.map((s) => ` · ${s}`).join("")}
             </p>
           )}

@@ -5,7 +5,7 @@ import { ScanActionRow } from "@/components/quickscan/ScanActionRow";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/overlays";
-import { Card, Label } from "@/components/ui/primitives";
+import { Card, Checkbox, Label } from "@/components/ui/primitives";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { SEARCH_KEY } from "@/lib/aql";
 import type { ScanAction, ScanConfig, ScanPreset } from "@/store/quickScan";
@@ -127,20 +127,23 @@ export function ScanOptionsPanel({
         </section>
 
         <section className="grid gap-2">
-          <Label>Match the scanned value against</Label>
-          <Select value={config.lookup} onValueChange={(lookup) => onConfigChange({ lookup })}>
-            <SelectTrigger className="h-9 w-full">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value={SEARCH_KEY}>Key</SelectItem>
-              {lookupOptions.map((a) => (
-                <SelectItem key={a.id} value={a.id}>
-                  {a.name}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+          <Label>Match the scanned value against any of</Label>
+          {[{ id: SEARCH_KEY, name: "Key" }, ...lookupOptions].map((o) => {
+            const checked = config.lookups.includes(o.id);
+            return (
+              <label key={o.id} className="flex items-center gap-2 text-sm">
+                <Checkbox
+                  checked={checked}
+                  // At least one field must stay selected.
+                  disabled={checked && config.lookups.length === 1}
+                  onCheckedChange={(on) =>
+                    onConfigChange({ lookups: on ? [...config.lookups, o.id] : config.lookups.filter((l) => l !== o.id) })
+                  }
+                />
+                {o.name}
+              </label>
+            );
+          })}
         </section>
 
         <section className="grid gap-2">
