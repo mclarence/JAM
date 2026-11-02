@@ -56,6 +56,17 @@ export interface BuildQueryInput {
   sort?: { attrName: string; desc: boolean } | null;
 }
 
+/** `(Key = … OR attr LIKE … )` across the key and text-searchable attributes. */
+export function allFieldsClause(term: string, attributes: ObjectTypeAttribute[]) {
+  const v = aqlString(term);
+  const clauses = new Set<string>([`Key = ${v}`]);
+  attributes
+    .filter((a) => !a.hidden && !isTextarea(a) && (a.label || isTextSearchable(a)))
+    .slice(0, 20)
+    .forEach((a) => clauses.add(`${aqlAttr(a.name)} LIKE ${v}`));
+  return `(${[...clauses].join(" OR ")})`;
+}
+
 /** Composes the server-side AQL for the assets grid. */
 export function buildAssetsQuery({
   objectTypeId,
@@ -75,12 +86,7 @@ export function buildAssetsQuery({
     } else if (field) {
       parts.push(`${aqlAttr(field.name)} ${searchOperator(field)} ${v}`);
     } else {
-      const clauses = new Set<string>([`Key = ${v}`]);
-      attributes
-        .filter((a) => !a.hidden && !isTextarea(a) && (a.label || isTextSearchable(a)))
-        .slice(0, 20)
-        .forEach((a) => clauses.add(`${aqlAttr(a.name)} LIKE ${v}`));
-      parts.push(`(${[...clauses].join(" OR ")})`);
+      parts.push(allFieldsClause(term, attributes));
     }
   }
   if (rawAql?.trim()) parts.push(`(${rawAql.trim()})`);

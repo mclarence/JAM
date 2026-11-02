@@ -28,6 +28,8 @@ interface SettingsState {
   assetTags: Record<string, AssetTagConfig>;
   aqlPresets: AqlPreset[];
   labelDefaults: { unit: "mm" | "in" | "px"; width: number; height: number; output: PdfOutput };
+  /** Referenced object type id -> attribute id shown beside the label in reference pickers; absent = object key. */
+  referenceDisplay: Record<string, string>;
 
   setSchema: (schemaId: string | null) => void;
   setObjectType: (objectTypeId: string | null) => void;
@@ -39,6 +41,7 @@ interface SettingsState {
   savePreset: (name: string, aql: string) => void;
   deletePreset: (id: string) => void;
   setLabelDefaults: (patch: Partial<SettingsState["labelDefaults"]>) => void;
+  setReferenceDisplay: (objectTypeId: string, attributeId: string | null) => void;
 }
 
 export const useSettings = create<SettingsState>()(
@@ -51,6 +54,7 @@ export const useSettings = create<SettingsState>()(
       assetTags: {},
       aqlPresets: [],
       labelDefaults: { unit: "mm", width: 62, height: 29, output: "open" },
+      referenceDisplay: {},
 
       setSchema: (schemaId) => set({ schemaId, objectTypeId: null }),
       setObjectType: (objectTypeId) => set({ objectTypeId }),
@@ -81,6 +85,13 @@ export const useSettings = create<SettingsState>()(
         set((s) => ({ aqlPresets: [...s.aqlPresets, { id: crypto.randomUUID(), name, aql }] })),
       deletePreset: (id) => set((s) => ({ aqlPresets: s.aqlPresets.filter((p) => p.id !== id) })),
       setLabelDefaults: (patch) => set((s) => ({ labelDefaults: { ...s.labelDefaults, ...patch } })),
+      setReferenceDisplay: (objectTypeId, attributeId) =>
+        set((s) => {
+          const referenceDisplay = { ...s.referenceDisplay };
+          if (attributeId) referenceDisplay[objectTypeId] = attributeId;
+          else delete referenceDisplay[objectTypeId];
+          return { referenceDisplay };
+        }),
     }),
     { name: "settings", storage: fileStorage("settings.json"), version: 1 },
   ),

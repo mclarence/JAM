@@ -9,7 +9,7 @@ import {
 import { assetsApi, isLast, PAGE_SIZE } from "./assets";
 import { connectionApi } from "./client";
 import type { AqlResult, AssetObject, ObjectAttributeValue, ObjectTypeAttribute, StatusType } from "./types";
-import { aqlAttr, aqlString } from "@/lib/aql";
+import { allFieldsClause, aqlAttr, aqlString } from "@/lib/aql";
 import { notify } from "@/lib/notify";
 
 export const qk = {
@@ -139,7 +139,7 @@ export function useReferenceSearch(refTypeId: string | undefined, term: string) 
     queryFn: async () => {
       const t = term.trim();
       let q = `objectTypeId = ${Number(refTypeId)}`;
-      if (t) q += ` AND (Key = ${aqlString(t)} OR ${aqlAttr(labelAttr)} LIKE ${aqlString(t)})`;
+      if (t) q += ` AND ${allFieldsClause(t, attrs.data ?? [])}`;
       q += ` ORDER BY ${aqlAttr(labelAttr)} ASC`;
       return (await assetsApi.searchObjects(q, 0, 25)).values;
     },

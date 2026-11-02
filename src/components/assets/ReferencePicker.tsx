@@ -4,6 +4,8 @@ import { useReferenceSearch } from "@/api/queries";
 import type { ObjectTypeAttribute } from "@/api/types";
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command";
 import { useDebounce } from "@/hooks/useDebounce";
+import { getAttrText } from "@/lib/attributes";
+import { useSettings } from "@/store/settings";
 
 export interface PickedReference {
   id: string;
@@ -24,6 +26,7 @@ export function ReferencePicker({
   const [term, setTerm] = useState("");
   const debounced = useDebounce(term, 300);
   const results = useReferenceSearch(attr.referenceObjectTypeId, debounced);
+  const displayAttrId = useSettings((s) => (attr.referenceObjectTypeId ? s.referenceDisplay[attr.referenceObjectTypeId] : undefined));
 
   return (
     <Command shouldFilter={false} className="w-80">
@@ -55,7 +58,7 @@ export function ReferencePicker({
               onSelect={() => onPick({ id: o.id, objectKey: o.objectKey, label: o.label })}
             >
               <span className="truncate">{o.label}</span>
-              <span className="ml-auto text-xs text-muted-foreground">{o.objectKey}</span>
+              <span className="ml-auto text-xs text-muted-foreground">{(displayAttrId && getAttrText(o, displayAttrId)) || o.objectKey}</span>
             </CommandItem>
           ))}
         </CommandGroup>

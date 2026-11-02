@@ -12,13 +12,14 @@ import { useThemeStore, type ThemePref } from "@/store/theme";
 const FORMAT = "jira-assets-manager-settings";
 const VERSION = 1;
 
-export type Section = "filters" | "columns" | "assetTags" | "statusColors" | "scanPresets" | "templates" | "preferences";
+export type Section = "filters" | "columns" | "assetTags" | "referenceDisplay" | "statusColors" | "scanPresets" | "templates" | "preferences";
 export type ImportMode = "merge" | "replace";
 
 export const SECTION_LABELS: Record<Section, string> = {
   filters: "Saved filters",
   columns: "Column layouts",
   assetTags: "Asset tag numbering",
+  referenceDisplay: "Reference picker display fields",
   statusColors: "Status colours",
   scanPresets: "Quick Scan presets",
   templates: "Label templates",
@@ -36,6 +37,7 @@ export interface SettingsBundle {
   filters?: AqlPreset[];
   columns?: Record<string, ColumnPrefs>;
   assetTags?: Record<string, AssetTagConfig>;
+  referenceDisplay?: Record<string, string>;
   statusColors?: Record<string, ColorKey>;
   /** Quick Scan presets per object type id. */
   scanPresets?: Record<string, ScanPreset[]>;
@@ -50,6 +52,7 @@ export function buildExport(): string {
     filters: s.aqlPresets,
     columns: s.columns,
     assetTags: s.assetTags,
+    referenceDisplay: s.referenceDisplay,
     statusColors: s.statusColors,
     scanPresets: useQuickScan.getState().presets,
     templates: { items: t.templates, defaultTemplateId: t.defaultTemplateId },
@@ -230,6 +233,7 @@ export function parseImport(text: string): SettingsBundle {
   if ("filters" in raw) bundle.filters = cleanFilters(raw.filters);
   if ("columns" in raw) bundle.columns = cleanColumns(raw.columns);
   if ("assetTags" in raw) bundle.assetTags = cleanAssetTags(raw.assetTags);
+  if ("referenceDisplay" in raw) bundle.referenceDisplay = mapValues<string>(raw.referenceDisplay, (a) => (isStr(a) && a ? a : null));
   if ("statusColors" in raw) {
     bundle.statusColors = mapValues<ColorKey>(raw.statusColors, (c) => (oneOf(c, COLOR_KEYS) ? c : null));
   }
@@ -251,6 +255,7 @@ export function sectionCounts(b: SettingsBundle): Partial<Record<Section, number
     ...(b.filters && { filters: b.filters.length }),
     ...(b.columns && { columns: Object.keys(b.columns).length }),
     ...(b.assetTags && { assetTags: Object.keys(b.assetTags).length }),
+    ...(b.referenceDisplay && { referenceDisplay: Object.keys(b.referenceDisplay).length }),
     ...(b.statusColors && { statusColors: Object.keys(b.statusColors).length }),
     ...(b.scanPresets && { scanPresets: Object.values(b.scanPresets).reduce((n, l) => n + l.length, 0) }),
     ...(b.templates && { templates: b.templates.items.length }),
@@ -274,6 +279,9 @@ export function applyImport(bundle: SettingsBundle, sections: Set<Section>, mode
   if (sections.has("columns") && bundle.columns) patch.columns = replace ? bundle.columns : { ...cur.columns, ...bundle.columns };
   if (sections.has("assetTags") && bundle.assetTags) {
     patch.assetTags = replace ? bundle.assetTags : { ...cur.assetTags, ...bundle.assetTags };
+  }
+  if (sections.has("referenceDisplay") && bundle.referenceDisplay) {
+    patch.referenceDisplay = replace ? bundle.referenceDisplay : { ...cur.referenceDisplay, ...bundle.referenceDisplay };
   }
   if (sections.has("statusColors") && bundle.statusColors) {
     patch.statusColors = replace ? bundle.statusColors : { ...cur.statusColors, ...bundle.statusColors };

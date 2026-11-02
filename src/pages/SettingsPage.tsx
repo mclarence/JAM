@@ -3,6 +3,7 @@ import { AssetTagTab } from "@/components/settings/AssetTagTab";
 import { BackupTab } from "@/components/settings/BackupTab";
 import { ConnectionTab } from "@/components/settings/ConnectionTab";
 import { LabelDefaultsTab } from "@/components/settings/LabelDefaultsTab";
+import { ReferenceDisplayTab } from "@/components/settings/ReferenceDisplayTab";
 import { SchemaTab } from "@/components/settings/SchemaTab";
 import { StatusColorsTab } from "@/components/settings/StatusColorsTab";
 import { UpdatesTab } from "@/components/settings/UpdatesTab";
@@ -19,6 +20,7 @@ export function SettingsPage() {
           <TabsTrigger value="connection">API Connection</TabsTrigger>
           <TabsTrigger value="schema">Schema &amp; Object Type</TabsTrigger>
           <TabsTrigger value="assetTag">Asset Tag</TabsTrigger>
+          <TabsTrigger value="reference">Reference Fields</TabsTrigger>
           <TabsTrigger value="status">Status Colours</TabsTrigger>
           <TabsTrigger value="labels">Label Defaults</TabsTrigger>
           <TabsTrigger value="backup">Import / Export</TabsTrigger>
@@ -32,6 +34,9 @@ export function SettingsPage() {
         </TabsContent>
         <TabsContent value="assetTag">
           <AssetTagTab />
+        </TabsContent>
+        <TabsContent value="reference">
+          <ReferenceDisplayTab />
         </TabsContent>
         <TabsContent value="status">
           <StatusColorsTab />
