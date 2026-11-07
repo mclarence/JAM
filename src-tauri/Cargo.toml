@@ -1,6 +1,6 @@
 [package]
 name = "jira-assets-manager"
-version = "0.1.0"
+version = "1.0.0"
 description = "IT Asset Management desktop client for JIRA Assets"
 edition = "2021"
 
