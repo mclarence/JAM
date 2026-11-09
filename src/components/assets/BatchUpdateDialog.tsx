@@ -2,6 +2,8 @@ import { useMemo, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { Loader2, Plus } from "lucide-react";
 import type { AssetObject, ObjectTypeAttribute, StatusType } from "@/api/types";
+import { useConnection } from "@/api/queries";
+import { applyMutationResult, captureMutationContext, refreshLockedAsset, refreshMutationQueries } from "@/api/mutationCache";
 import { ScanActionRow } from "@/components/quickscan/ScanActionRow";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog";
@@ -9,7 +11,10 @@ import { editorKind } from "@/lib/attributes";
 import { runBatch, type BatchFailure, type BatchJob } from "@/lib/batchUpdate";
 import { notify } from "@/lib/notify";
 import { actionAttributes, planChanges } from "@/lib/quickScan";
+import { applicableRules } from "@/lib/rules";
 import type { ScanAction } from "@/store/quickScan";
+import { useSettings } from "@/store/settings";
+import { useUi } from "@/store/ui";
 
 const LARGE_BATCH = 100;
 
@@ -41,6 +46,8 @@ function BatchForm({
   onClose,
 }: Omit<Props, "open" | "onOpenChange"> & { onBusyChange: (busy: boolean) => void; onClose: () => void }) {
   const qc = useQueryClient();
+  const connection = useConnection().data;
+  const rules = useSettings((state) => state.rules);
   const [actions, setActions] = useState<ScanAction[]>([]);
   const [phase, setPhase] = useState<"edit" | "running" | "failed">("edit");
   const [progress, setProgress] = useState({ done: 0, total: 0 });
@@ -51,14 +58,19 @@ function BatchForm({
   const used = new Set(actions.map((a) => a.attrId));
   const canAdd = options.some((a) => !used.has(a.id));
   const incomplete = actions.some((a) => a.mode === "set" && !a.value);
+  const hasRules = !!connection && !!objects[0] && applicableRules(
+    rules,
+    { cloudId: connection.cloudId, workspaceId: connection.workspaceId, objectTypeId: objects[0].objectType.id },
+    "batch",
+  ).length > 0;
 
   const jobs = useMemo<BatchJob[]>(
     () =>
       objects.flatMap((object) => {
         const { payload } = planChanges(object, attributes, actions);
-        return payload.length ? [{ object, payload }] : [];
+        return payload.length || (hasRules && actions.length) ? [{ object, payload }] : [];
       }),
-    [objects, attributes, actions],
+    [objects, attributes, actions, hasRules],
   );
 
   const updateAction = (id: string, patch: Partial<ScanAction>) =>
@@ -77,12 +89,20 @@ function BatchForm({
     setPhase("running");
     onBusyChange(true);
     setProgress({ done: 0, total: list.length });
-    const result = await runBatch(list, (done) => setProgress({ done, total: list.length }));
+    const isCurrent = captureMutationContext(qc);
+    const result = await runBatch(list, (done) => setProgress({ done, total: list.length }), {
+      rules, attributes, actions, connection: connection ?? undefined, isCurrent,
+      onResult: (item) => applyMutationResult(qc, item),
+      onUnconfirmed: async (id) => { if (isCurrent()) await refreshLockedAsset(qc, id); },
+    });
     onBusyChange(false);
-    void qc.invalidateQueries({ queryKey: ["objects"] });
-    void qc.invalidateQueries({ queryKey: ["count"] });
-    void qc.invalidateQueries({ queryKey: ["object"] });
-    void qc.invalidateQueries({ queryKey: ["history"] });
+    for (const item of result.results) {
+      if (item.publicationWarning) {
+        useUi.getState().markAssetStale(item.objectId, item.publicationWarning);
+        notify.error(item.publicationWarning);
+      }
+    }
+    await refreshMutationQueries(qc, result.results);
 
     const totalUpdated = updated + result.updated;
     setUpdated(totalUpdated);
@@ -169,7 +189,9 @@ function BatchForm({
             actions.length > 0 &&
             (jobs.length === 0
               ? "None of the selected assets would change."
-              : `${jobs.length} of ${count} will change${jobs.length > LARGE_BATCH ? "; this sends many requests and may take a while." : "."}`)}
+              : hasRules
+                ? `${jobs.length} selected assets will be checked against their latest values; unchanged assets are skipped.`
+                : `${jobs.length} of ${count} will change${jobs.length > LARGE_BATCH ? "; this sends many requests and may take a while." : "."}`)}
         </p>
         <div className="flex gap-2">
           {phase === "edit" && (

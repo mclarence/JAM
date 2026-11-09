@@ -3,6 +3,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { open, save } from "@tauri-apps/plugin-dialog";
 import { Download, KeyRound, Loader2, ShieldCheck, Upload } from "lucide-react";
 import { ApiError, backupApi, type ImportPreview } from "@/api/client";
+import { resetMutationCaches } from "@/api/mutationCache";
 import { qk, useConnection } from "@/api/queries";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -162,8 +163,10 @@ export function BackupTab() {
       // Connection first: if it fails nothing else has been changed.
       if (importConn && pending.connection) {
         const info = await backupApi.importConnection(pending.path, pending.passphrase);
+        await qc.cancelQueries({ predicate: (q) => q.queryKey[0] !== "connection" });
+        qc.removeQueries({ predicate: (q) => q.queryKey[0] !== "connection" });
+        resetMutationCaches(qc);
         qc.setQueryData(qk.connection, info);
-        qc.invalidateQueries({ predicate: (q) => q.queryKey[0] !== "connection" });
       }
       applyImport(pending.bundle, sections, mode);
       notify.success("Settings imported");
@@ -189,7 +192,7 @@ export function BackupTab() {
       <Card className="flex items-start gap-3 p-4 text-sm">
         <ShieldCheck className="mt-0.5 size-5 shrink-0 text-green-600 dark:text-green-400" />
         <p className="text-muted-foreground">
-          Exports include saved filters, column layouts, asset tag numbering, status colours, Quick Scan presets, label templates and
+          Exports include saved filters, column layouts, asset tag numbering, status colours, Rules, Quick Scan presets, label templates and
           preferences. Your API connection (site, email and token) is only included if you choose to, and then the
           whole file is encrypted with a passphrase. Network and proxy options are never exported.
         </p>

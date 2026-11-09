@@ -2,8 +2,9 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { AlertTriangle, CheckCircle2, Database, Loader2, MinusCircle, PanelLeftClose, PanelLeftOpen, PlugZap, RotateCcw, ScanLine, Volume2, VolumeX, XCircle } from "lucide-react";
 import { assetsApi } from "@/api/assets";
-import { qk, useAttributes, useConnection, useObjectTypes, useStatusTypes } from "@/api/queries";
-import type { ObjectTypeAttribute } from "@/api/types";
+import { applyMutationResult, captureMutationContext, refreshLockedAsset, refreshMutationQueries } from "@/api/mutationCache";
+import { useAttributes, useConnection, useObjectTypes, useStatusTypes } from "@/api/queries";
+import type { ConnectionInfo, ObjectTypeAttribute } from "@/api/types";
 import { EmptyState, PageHeader } from "@/components/layout/PageHeader";
 import { ScanOptionsPanel } from "@/components/quickscan/ScanOptionsPanel";
 import { Button } from "@/components/ui/button";
@@ -21,6 +22,8 @@ import {
   validLookups,
 } from "@/lib/quickScan";
 import { playScanTone, type ScanTone } from "@/lib/scanSound";
+import { assertConnection, beginAssetMutation, plannedChangeDescriptions, prepareUpdate, updatePrepared } from "@/lib/ruleMutations";
+import type { Rule } from "@/lib/rules";
 import { cn } from "@/lib/utils";
 import { DEFAULT_SCAN_CONFIG, useQuickScan, type ScanAction, type ScanConfig } from "@/store/quickScan";
 import { useSettings } from "@/store/settings";
@@ -46,6 +49,9 @@ interface Job {
   objectTypeId: string;
   config: ScanConfig;
   attrs: ObjectTypeAttribute[];
+  rules: Rule[];
+  connection: ConnectionInfo;
+  isCurrent: () => boolean;
 }
 
 const MAX_ROWS = 500;
@@ -112,6 +118,9 @@ export function QuickScanPage() {
 
   const process = async (job: Job): Promise<Partial<ScanRow>> => {
     try {
+      if (!job.isCurrent()) throw new Error("The connection changed while the scan was queued. Scan again on the current workspace.");
+      await assertConnection(job.connection);
+      if (!job.isCurrent()) throw new Error("The connection changed while the scan was queued. Scan again on the current workspace.");
       const q = lookupQuery(job.objectTypeId, job.config.lookups, job.attrs, job.text);
       const found = await assetsApi.searchObjects(q, 0, 2);
       if (found.values.length === 0) return { state: "notFound" };
@@ -119,18 +128,31 @@ export function QuickScanPage() {
 
       const obj = found.values[0];
       const asset = { key: obj.objectKey, label: obj.label };
-      const warning = seen.current.has(obj.id) ? "Already scanned this session" : undefined;
+      let warning = seen.current.has(obj.id) ? "Already scanned this session" : undefined;
       seen.current.add(obj.id);
 
-      const plan = planChanges(obj, job.attrs, job.config.actions);
-      if (plan.payload.length === 0) return { state: "unchanged", asset, warning };
-
-      await assetsApi.updateObject(obj.id, { objectTypeId: obj.objectType.id, attributes: plan.payload });
-      void qc.invalidateQueries({ queryKey: ["objects"] });
-      void qc.invalidateQueries({ queryKey: ["count"] });
-      void qc.invalidateQueries({ queryKey: qk.object(obj.id) });
-      void qc.invalidateQueries({ queryKey: qk.history(obj.id) });
-      return { state: "updated", asset, warning, changes: plan.changes };
+      const release = beginAssetMutation(obj.id);
+      let attemptedWrite = false;
+      try {
+        const prepared = await prepareUpdate({
+          object: obj, operation: "scan", rules: job.rules, attributes: job.attrs, connection: job.connection,
+          isCurrent: job.isCurrent,
+          buildChanges: (baseline, attrs) => planChanges(baseline, attrs, job.config.actions),
+        });
+        attemptedWrite = prepared.plan.payload.length > 0;
+        const result = await updatePrepared(prepared);
+        attemptedWrite = false;
+        applyMutationResult(qc, result);
+        if (!result.didWrite) return { state: "unchanged", asset, warning };
+        await refreshMutationQueries(qc, [result]);
+        if (result.refreshWarning) warning = warning ? `${warning}. ${result.refreshWarning}` : result.refreshWarning;
+        return { state: "updated", asset, warning, changes: plannedChangeDescriptions(prepared) };
+      } catch (error) {
+        if (attemptedWrite && job.isCurrent()) await refreshLockedAsset(qc, obj.id);
+        throw error;
+      } finally {
+        release();
+      }
     } catch (e) {
       return { state: "failed", error: e instanceof Error ? e.message : String(e) };
     }
@@ -157,7 +179,7 @@ export function QuickScanPage() {
   };
 
   const incomplete = config.actions.some((a) => a.mode === "set" && !a.value);
-  const ready = !!objectTypeId && attrsQuery.isSuccess && config.actions.length > 0 && !incomplete;
+  const ready = !!connection.data && !!objectTypeId && attrsQuery.isSuccess && config.actions.length > 0 && !incomplete;
 
   // A disabled input drops focus, so take it back once scanning becomes possible.
   useEffect(() => {
@@ -172,10 +194,13 @@ export function QuickScanPage() {
   const submit = () => {
     const text = sanitizeScan(input);
     setInput("");
-    if (!text || !ready || !objectTypeId) return;
+    if (!text || !ready || !objectTypeId || !connection.data) return;
     const rowId = crypto.randomUUID();
     setRows((rs) => [{ id: rowId, at: Date.now(), text, state: "pending" as const }, ...rs].slice(0, MAX_ROWS));
-    queue.current.push({ rowId, session: session.current, text, objectTypeId, config, attrs });
+    queue.current.push({
+      rowId, session: session.current, text, objectTypeId, config, attrs, rules: useSettings.getState().rules,
+      connection: connection.data, isCurrent: captureMutationContext(qc),
+    });
     void drain();
   };
 

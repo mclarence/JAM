@@ -31,6 +31,9 @@ export const assetsApi = {
   listObjectTypes: (schemaId: string) =>
     assetsRequest<ObjectType[]>("GET", `/objectschema/${encodeURIComponent(schemaId)}/objecttypes/flat`),
 
+  getObjectType: (objectTypeId: string) =>
+    assetsRequest<ObjectType>("GET", `/objecttype/${encodeURIComponent(objectTypeId)}`),
+
   getObjectTypeAttributes: (objectTypeId: string) =>
     assetsRequest<ObjectTypeAttribute[]>("GET", `/objecttype/${encodeURIComponent(objectTypeId)}/attributes`),
 
@@ -59,6 +62,13 @@ export const assetsApi = {
   listStatusTypes: (objectSchemaId?: string) =>
     assetsRequest<StatusType[]>("GET", "/config/statustype", { query: { objectSchemaId } }),
 };
+
+export async function getCompleteObject(id: string): Promise<AssetObject> {
+  const object = await assetsApi.getObject(id);
+  if (!Array.isArray(object.attributes)) throw new Error("The asset response did not include its attributes.");
+  if (object.id !== id) throw new Error("The asset response did not match the requested asset.");
+  return object;
+}
 
 export function isLast(page: { isLast: boolean | string }) {
   return page.isLast === true || page.isLast === "true";

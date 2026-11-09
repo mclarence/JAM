@@ -4,6 +4,7 @@ import { BackupTab } from "@/components/settings/BackupTab";
 import { ConnectionTab } from "@/components/settings/ConnectionTab";
 import { LabelDefaultsTab } from "@/components/settings/LabelDefaultsTab";
 import { ReferenceDisplayTab } from "@/components/settings/ReferenceDisplayTab";
+import { RulesTab } from "@/components/settings/RulesTab";
 import { SchemaTab } from "@/components/settings/SchemaTab";
 import { StatusColorsTab } from "@/components/settings/StatusColorsTab";
 import { UpdatesTab } from "@/components/settings/UpdatesTab";
@@ -14,7 +15,7 @@ export function SettingsPage() {
   const { settingsTab, navigate } = useUi();
   return (
     <div className="flex-1 overflow-auto p-8">
-      <PageHeader title="Settings" description="Connection, data source, status colours and label defaults." />
+      <PageHeader title="Settings" description="Connection, data source, Rules, status colours and label defaults." />
       <Tabs value={settingsTab} onValueChange={(v) => navigate("settings", v as SettingsTab)}>
         <TabsList>
           <TabsTrigger value="connection">API Connection</TabsTrigger>
@@ -22,6 +23,7 @@ export function SettingsPage() {
           <TabsTrigger value="assetTag">Asset Tag</TabsTrigger>
           <TabsTrigger value="reference">Reference Fields</TabsTrigger>
           <TabsTrigger value="status">Status Colours</TabsTrigger>
+          <TabsTrigger value="rules">Rules</TabsTrigger>
           <TabsTrigger value="labels">Label Defaults</TabsTrigger>
           <TabsTrigger value="backup">Import / Export</TabsTrigger>
           <TabsTrigger value="updates">Updates</TabsTrigger>
@@ -40,6 +42,9 @@ export function SettingsPage() {
         </TabsContent>
         <TabsContent value="status">
           <StatusColorsTab />
+        </TabsContent>
+        <TabsContent value="rules">
+          <RulesTab />
         </TabsContent>
         <TabsContent value="labels">
           <LabelDefaultsTab />

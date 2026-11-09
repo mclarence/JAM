@@ -69,6 +69,7 @@ interface Props {
 export function AssetGrid(props: Props) {
   const { rows, attributes, statuses, hasNextPage, isFetchingNextPage, fetchNextPage } = props;
   const { editing, setEditing, openDetail } = useUi();
+  const staleAssets = useUi((state) => state.staleAssets);
   const update = useUpdateAttribute();
   const scrollRef = useRef<HTMLDivElement>(null);
   // The distance threshold keeps plain header clicks working as sort toggles.
@@ -221,7 +222,7 @@ export function AssetGrid(props: Props) {
                 {row.getVisibleCells().map((cell) => {
                   const attr = (cell.column.columnDef.meta as { attr?: ObjectTypeAttribute } | undefined)?.attr;
                   const isEditing = !!attr && editing?.objectId === row.id && editing.attrId === attr.id;
-                  const editable = !!attr && editorKind(attr) !== "readonly";
+                  const editable = !!attr && !staleAssets[row.id] && editorKind(attr) !== "readonly";
                   return (
                     <div
                       key={cell.id}

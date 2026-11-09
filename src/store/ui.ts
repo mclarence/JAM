@@ -1,7 +1,7 @@
 import { create } from "zustand";
 
 export type Page = "dashboard" | "assets" | "quickscan" | "templates" | "settings";
-export type SettingsTab = "connection" | "schema" | "assetTag" | "reference" | "status" | "labels" | "backup" | "updates";
+export type SettingsTab = "connection" | "schema" | "assetTag" | "reference" | "status" | "rules" | "labels" | "backup" | "updates";
 
 export interface Notification {
   id: string;
@@ -27,6 +27,7 @@ interface UiState {
   editing: EditingCell | null;
   detailObjectId: string | null;
   notifications: Notification[];
+  staleAssets: Record<string, string>;
   unread: number;
   searchFocusTick: number;
 
@@ -43,6 +44,9 @@ interface UiState {
   markRead: () => void;
   clearNotifications: () => void;
   focusSearch: () => void;
+  markAssetStale: (id: string, message: string) => void;
+  clearAssetStale: (id: string) => void;
+  clearStaleAssets: () => void;
 }
 
 export const useUi = create<UiState>((set) => ({
@@ -56,6 +60,7 @@ export const useUi = create<UiState>((set) => ({
   editing: null,
   detailObjectId: null,
   notifications: [],
+  staleAssets: {},
   unread: 0,
   searchFocusTick: 0,
 
@@ -76,4 +81,12 @@ export const useUi = create<UiState>((set) => ({
   markRead: () => set({ unread: 0 }),
   clearNotifications: () => set({ notifications: [], unread: 0 }),
   focusSearch: () => set((s) => ({ searchFocusTick: s.searchFocusTick + 1 })),
+  markAssetStale: (id, message) => set((s) => ({ staleAssets: { ...s.staleAssets, [id]: message } })),
+  clearAssetStale: (id) =>
+    set((s) => {
+      const staleAssets = { ...s.staleAssets };
+      delete staleAssets[id];
+      return { staleAssets };
+    }),
+  clearStaleAssets: () => set({ staleAssets: {} }),
 }));

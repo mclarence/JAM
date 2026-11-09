@@ -2,6 +2,7 @@ import { create } from "zustand";
 import { persist } from "zustand/middleware";
 import { DEFAULT_STATUS_COLORS, type ColorKey } from "@/lib/statusColors";
 import type { AssetTagConfig } from "@/lib/assetTag";
+import type { Rule } from "@/lib/rules";
 import { fileStorage } from "./persist";
 
 export interface AqlPreset {
@@ -30,6 +31,7 @@ interface SettingsState {
   labelDefaults: { unit: "mm" | "in" | "px"; width: number; height: number; output: PdfOutput };
   /** Referenced object type id -> attribute id shown beside the label in reference pickers; absent = object key. */
   referenceDisplay: Record<string, string>;
+  rules: Rule[];
 
   setSchema: (schemaId: string | null) => void;
   setObjectType: (objectTypeId: string | null) => void;
@@ -42,6 +44,9 @@ interface SettingsState {
   deletePreset: (id: string) => void;
   setLabelDefaults: (patch: Partial<SettingsState["labelDefaults"]>) => void;
   setReferenceDisplay: (objectTypeId: string, attributeId: string | null) => void;
+  saveRule: (rule: Rule) => void;
+  deleteRule: (id: string) => void;
+  swapRules: (firstId: string, secondId: string) => void;
 }
 
 export const useSettings = create<SettingsState>()(
@@ -55,6 +60,7 @@ export const useSettings = create<SettingsState>()(
       aqlPresets: [],
       labelDefaults: { unit: "mm", width: 62, height: 29, output: "open" },
       referenceDisplay: {},
+      rules: [],
 
       setSchema: (schemaId) => set({ schemaId, objectTypeId: null }),
       setObjectType: (objectTypeId) => set({ objectTypeId }),
@@ -91,6 +97,22 @@ export const useSettings = create<SettingsState>()(
           if (attributeId) referenceDisplay[objectTypeId] = attributeId;
           else delete referenceDisplay[objectTypeId];
           return { referenceDisplay };
+        }),
+      saveRule: (rule) =>
+        set((s) => ({
+          rules: s.rules.some((existing) => existing.id === rule.id)
+            ? s.rules.map((existing) => (existing.id === rule.id ? rule : existing))
+            : [...s.rules, rule],
+        })),
+      deleteRule: (id) => set((s) => ({ rules: s.rules.filter((rule) => rule.id !== id) })),
+      swapRules: (firstId, secondId) =>
+        set((s) => {
+          const first = s.rules.findIndex((rule) => rule.id === firstId);
+          const second = s.rules.findIndex((rule) => rule.id === secondId);
+          if (first < 0 || second < 0) return {};
+          const rules = [...s.rules];
+          [rules[first], rules[second]] = [rules[second], rules[first]];
+          return { rules };
         }),
     }),
     { name: "settings", storage: fileStorage("settings.json"), version: 1 },

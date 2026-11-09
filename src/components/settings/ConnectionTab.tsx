@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { CheckCircle2, ChevronDown, ChevronRight, Globe, Loader2, LogOut, PlugZap, TriangleAlert } from "lucide-react";
 import { connectionApi, networkApi } from "@/api/client";
+import { resetMutationCaches } from "@/api/mutationCache";
 import { qk, useConnection } from "@/api/queries";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -39,9 +40,11 @@ export function ConnectionTab() {
       await networkApi.set({ acceptInvalidCerts, proxyUrl: proxyUrl.trim() || null });
       return connectionApi.connect({ siteUrl, email, secret: secret || undefined });
     },
-    onSuccess: (info) => {
+    onSuccess: async (info) => {
+      await qc.cancelQueries({ predicate: (q) => q.queryKey[0] !== "connection" });
+      qc.removeQueries({ predicate: (q) => q.queryKey[0] !== "connection" });
+      resetMutationCaches(qc);
       qc.setQueryData(qk.connection, info);
-      qc.invalidateQueries({ predicate: (q) => q.queryKey[0] !== "connection" });
       setSecret("");
       notify.success("Connected to JIRA Assets");
     },
@@ -50,7 +53,9 @@ export function ConnectionTab() {
 
   const disconnect = useMutation({
     mutationFn: connectionApi.disconnect,
-    onSuccess: () => {
+    onSuccess: async () => {
+      await qc.cancelQueries({ predicate: (q) => q.queryKey[0] !== "connection" });
+      resetMutationCaches(qc);
       qc.setQueryData(qk.connection, null);
       qc.removeQueries({ predicate: (q) => q.queryKey[0] !== "connection" });
       notify.info("Disconnected and credentials removed");

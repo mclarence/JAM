@@ -25,8 +25,9 @@ export function ReferencePicker({
 }) {
   const [term, setTerm] = useState("");
   const debounced = useDebounce(term, 300);
-  const results = useReferenceSearch(attr.referenceObjectTypeId, debounced);
-  const displayAttrId = useSettings((s) => (attr.referenceObjectTypeId ? s.referenceDisplay[attr.referenceObjectTypeId] : undefined));
+  const typeId = attr.referenceObjectTypeId ?? attr.referenceObjectType?.id;
+  const results = useReferenceSearch(typeId, debounced);
+  const displayAttrId = useSettings((s) => (typeId ? s.referenceDisplay[typeId] : undefined));
 
   return (
     <Command shouldFilter={false} className="w-80">
@@ -42,7 +43,14 @@ export function ReferencePicker({
             <Loader2 className="size-3 animate-spin" /> Searching…
           </div>
         )}
-        {!results.isFetching && <CommandEmpty>No matches.</CommandEmpty>}
+        {!typeId && <p role="alert" className="p-3 text-xs text-destructive">This attribute has no referenced object type.</p>}
+        {results.isError && (
+          <div role="alert" className="grid gap-1 p-3 text-xs text-destructive">
+            <span>Could not load objects: {results.error?.message}</span>
+            <button type="button" className="w-fit underline" onClick={() => void results.retry()}>Retry</button>
+          </div>
+        )}
+        {typeId && !results.isFetching && !results.isError && <CommandEmpty>No matches.</CommandEmpty>}
         {onClear && (
           <CommandGroup>
             <CommandItem value="__clear" onSelect={onClear}>

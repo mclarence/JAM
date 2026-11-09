@@ -44,6 +44,17 @@ Built for handheld barcode/QR scanners. Scan or type a value and press Enter to 
 - Save and reuse action sets as presets (for example "Return to stock").
 - Per-scan result log showing updated, unchanged and failed scans, with optional audio feedback.
 
+### Rules
+Rules automatically set attributes as part of saves made in this app. Open **Settings → Rules**, select a schema and object type, then create, edit, enable, disable, delete or reorder rules. Rules are stored locally for the Jira workspace and object type; they do not sync with the iOS app or run for changes made in Jira or another client. Desktop settings exports can include rules.
+
+Each rule selects the operations to run on, the attributes to watch, an **any** or **all** group of conditions, and fixed values to set. New rules run on individual edits, batch updates and Quick Scan; object creation is opt-in. For example, watch **Assigned to Employee**, **Assigned to Student** and **Room**; add an **is set** condition for each using **any**; then set **Status** to **Active**.
+
+At least one watched attribute must actually change in the user's save. Conditions see the existing object with the user's changes applied, including clears. All rules evaluate that same snapshot: actions do not trigger other rules, and later matching rules win if they set the same attribute, even over a manually entered value. Presence conditions can inspect multi-valued and read-only attributes; fixed-value actions target editable single-valued attributes. Creation starts with an empty object, and the create form's required fields must still be supplied manually.
+
+Invalid applicable rules block the affected save with an error; other assets in a batch can still succeed. Following a successful rule-driven save, the grid and open detail are updated automatically from the refreshed object. Filters or pagination may exclude the object from the grid. If the save succeeds but refresh fails, the app warns that the display may be stale and offers a retry; refresh before editing that asset again rather than repeating the save.
+
+Rules are client-side, not server-side automation or an atomic compare-and-set. They have no schedules, scripts, nested condition groups or dynamic action values, and cannot use server defaults when evaluating creation. Concurrent edits from other clients may occur between the app's read and write.
+
 ### Label templates and printing
 - **Visual designer** with drag/resize handles and snapping.
 - Units in mm, inches or px; single-label or sheet layouts (A3/A4/A5 grids) and continuous label sizes.
@@ -58,6 +69,7 @@ Built for handheld barcode/QR scanners. Scan or type a value and press Enter to 
 - **Schema**: pick the primary schema and object type.
 - **Asset tag**: per-object-type template (for example `SSCCXXXXX`) that auto-generates the next zero-padded tag.
 - **Status colours**: map status names to colours.
+- **Rules**: configure ordered, workspace-specific attribute automation.
 - **Label defaults**: default template, unit, label size and print action.
 - **Backup**: export and import settings to a JSON file, with optional passphrase encryption (Argon2-derived key). Connection details are only included in, and restored from, encrypted exports.
 - **Updates**: built-in updater with stable and nightly channels.
@@ -139,6 +151,7 @@ pnpm dev
 
 ```sh
 pnpm typecheck                 # TypeScript
+pnpm test                      # Rules and settings tests
 (cd src-tauri && cargo check)  # Rust
 
 pnpm tauri build               # installers in src-tauri/target/release/bundle

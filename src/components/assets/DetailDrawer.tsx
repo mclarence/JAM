@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import { ArrowDownLeft, ArrowUpRight, History, Loader2 } from "lucide-react";
 import {
   useAttributes,
@@ -10,6 +11,8 @@ import {
   useUpdateAttribute,
 } from "@/api/queries";
 import { AttrType, type AssetObject } from "@/api/types";
+import { retryAssetRefresh } from "@/api/mutationCache";
+import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetDescription, SheetTitle } from "@/components/ui/dialog";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/overlays";
 import { Skeleton } from "@/components/ui/primitives";
@@ -44,6 +47,8 @@ export function DetailDrawer({ fallback }: { fallback?: (id: string) => AssetObj
 }
 
 function DetailBody({ object }: { object: AssetObject }) {
+  const qc = useQueryClient();
+  const stale = useUi((state) => state.staleAssets[object.id]);
   const schemaId = useSettings((s) => s.schemaId);
   const attrs = useAttributes(object.objectType.id);
   const statuses = useStatusTypes(schemaId);
@@ -58,6 +63,12 @@ function DetailBody({ object }: { object: AssetObject }) {
           {object.objectKey} · {object.objectType.name} · updated {new Date(object.updated).toLocaleString()}
         </SheetDescription>
       </div>
+      {stale && (
+        <div role="alert" className="flex items-center justify-between gap-3 border-b p-4 text-sm text-destructive">
+          <span>{stale}</span>
+          <Button size="sm" variant="outline" onClick={() => void retryAssetRefresh(qc, object.id)}>Retry refresh</Button>
+        </div>
+      )}
       <Tabs defaultValue="attributes" className="flex min-h-0 flex-1 flex-col">
         <TabsList className="mx-6 mt-4 self-start">
           <TabsTrigger value="attributes">Attributes</TabsTrigger>
@@ -72,7 +83,7 @@ function DetailBody({ object }: { object: AssetObject }) {
               .filter((a) => !a.hidden)
               .map((attr) => {
                 const values = getAttrValues(object, attr.id);
-                const editable = editorKind(attr) !== "readonly";
+                const editable = !stale && editorKind(attr) !== "readonly";
                 const isEditing = editingAttr === attr.id;
                 return (
                   <div key={attr.id} className="grid grid-cols-[180px_1fr] items-center gap-4 py-2 text-sm">

@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import type { ColumnSizingState, RowSelectionState, SortingState, VisibilityState } from "@tanstack/react-table";
 import { Database, Loader2, PlugZap, Plus, RefreshCw } from "lucide-react";
 import {
@@ -11,6 +12,7 @@ import {
   useTotalCount,
 } from "@/api/queries";
 import type { AssetObject } from "@/api/types";
+import { retryAssetRefresh } from "@/api/mutationCache";
 import { AssetGrid } from "@/components/assets/AssetGrid";
 import { BatchUpdateDialog } from "@/components/assets/BatchUpdateDialog";
 import { ColumnDrawer } from "@/components/assets/ColumnDrawer";
@@ -32,9 +34,11 @@ const DEFAULT_HIDDEN_NAMES = new Set(["created", "updated"]);
 const DEFAULT_VISIBLE_COUNT = 10;
 
 export function AssetsPage() {
+  const qc = useQueryClient();
   const connection = useConnection();
   const { schemaId, objectTypeId, columns: columnPrefs, setColumnPrefs, resetColumnPrefs } = useSettings();
   const { search, searchField, rawAql, navigate } = useUi();
+  const staleAssets = useUi((state) => state.staleAssets);
 
   const schemas = useSchemas();
   const objectTypes = useObjectTypes(schemaId);
@@ -199,6 +203,14 @@ export function AssetsPage() {
         }
       />
 
+      {Object.keys(staleAssets).length > 0 && (
+        <div role="alert" className="mb-3 flex items-center justify-between gap-3 rounded-md border border-destructive/50 p-3 text-sm">
+          <span>Some saved assets could not be refreshed. Displayed values may be out of date.</span>
+          <Button size="sm" variant="outline" onClick={() => void Promise.all(Object.keys(staleAssets).map((id) => retryAssetRefresh(qc, id)))}>
+            Retry refresh
+          </Button>
+        </div>
+      )}
       <FilterBar attributes={attributes} error={queryError} />
 
       {objects.isLoading || attrsQuery.isLoading ? (

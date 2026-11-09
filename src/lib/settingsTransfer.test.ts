@@ -1,0 +1,71 @@
+import { beforeEach, describe, expect, it, vi } from "vitest";
+import type { Rule } from "./rules";
+import type { Section } from "./settingsTransfer";
+
+vi.mock("@/store/theme", () => ({
+  useThemeStore: { getState: () => ({ pref: "system", setPref: vi.fn() }) },
+}));
+
+const data = new Map<string, string>();
+vi.stubGlobal("localStorage", {
+  getItem: (key: string) => data.get(key) ?? null,
+  setItem: (key: string, value: string) => data.set(key, value),
+  removeItem: (key: string) => data.delete(key),
+});
+
+const { applyImport, buildExport, parseImport, sectionCounts } = await import("./settingsTransfer");
+const { useSettings } = await import("@/store/settings");
+const selected = new Set<Section>(["rules"]);
+
+function rule(id: string): Rule {
+  return {
+    id, name: id, enabled: true, cloudId: "cloud", workspaceId: "workspace", schemaId: "schema", objectTypeId: "type",
+    operations: ["edit", "batch"], watchedAttributeIds: ["room"], match: "any",
+    conditions: [{ id: `${id}-condition`, attributeId: "room", operator: "isSet" }],
+    actions: [{ id: `${id}-action`, attributeId: "status", value: { raw: "active", display: "Active" } }],
+  };
+}
+
+describe("Rules settings transfer and persistence", () => {
+  beforeEach(() => {
+    data.clear();
+    useSettings.setState({ rules: [] });
+  });
+
+  it("persists ordered rules, exports their count, and restores them", async () => {
+    useSettings.getState().saveRule(rule("first"));
+    useSettings.getState().saveRule(rule("second"));
+    useSettings.getState().swapRules("first", "second");
+    const saved = data.get("settings");
+    expect(saved).toBeDefined();
+    const bundle = parseImport(buildExport());
+    expect(sectionCounts(bundle).rules).toBe(2);
+    expect(bundle.rules?.map((item) => item.id)).toEqual(["second", "first"]);
+
+    useSettings.setState({ rules: [] });
+    data.set("settings", saved!);
+    await useSettings.persist.rehydrate();
+    expect(useSettings.getState().rules.map((item) => item.id)).toEqual(["second", "first"]);
+  });
+
+  it("merges imported rules in their incoming order, replaces only selected sections, and preserves scope", () => {
+    useSettings.setState({ rules: [rule("old"), rule("same")] });
+    const incoming = [{ ...rule("same"), workspaceId: "other" }, rule("new")];
+    applyImport({ rules: incoming }, selected, "merge");
+    expect(useSettings.getState().rules.map((item) => item.id)).toEqual(["old", "same", "new"]);
+    expect(useSettings.getState().rules[1].workspaceId).toBe("other");
+    applyImport({ rules: [rule("replacement")] }, selected, "replace");
+    expect(useSettings.getState().rules.map((item) => item.id)).toEqual(["replacement"]);
+  });
+
+  it("accepts older settings without rules and rejects malformed rule fragments", async () => {
+    data.set("settings", JSON.stringify({ state: { schemaId: "schema" }, version: 1 }));
+    await useSettings.persist.rehydrate();
+    expect(useSettings.getState().rules).toEqual([]);
+    const envelope = (rules: unknown) => JSON.stringify({ format: "jira-assets-manager-settings", version: 1, rules });
+    expect(parseImport(JSON.stringify({ format: "jira-assets-manager-settings", version: 1, filters: [] })).rules).toBeUndefined();
+    expect(() => parseImport(envelope([{ ...rule("broken"), actions: [] }]))).toThrow("at least one valid action");
+    expect(() => parseImport(envelope([{ ...rule("broken"), operations: ["other"] }]))).toThrow("malformed");
+    expect(() => parseImport(envelope([rule("duplicate"), rule("duplicate")]))).toThrow("duplicate ID");
+  });
+});

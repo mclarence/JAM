@@ -111,9 +111,9 @@ function CreateForm({
         return value ? [{ objectTypeAttributeId: attr.id, objectAttributeValues: [{ value }] }] : [];
       }),
     };
-    create.mutate(body, {
-      onSuccess: (obj) => {
-        notify.success(`Created ${obj?.objectKey ?? objectTypeName}`);
+    create.mutate({ body, attributes }, {
+      onSuccess: (result) => {
+        notify.success(`Created ${result.object?.objectKey ?? objectTypeName}`);
         if (createAnother) {
           setShowErrors(false);
           if (tagAttr && tagConfig) {
