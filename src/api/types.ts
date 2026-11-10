@@ -137,6 +137,8 @@ export interface AssetObject {
 
 export interface AqlResult extends PagedResult<AssetObject> {
   objectTypeAttributes?: ObjectTypeAttribute[];
+  /** Raw server offset retained when confirmed deletions are hidden locally during indexing lag. */
+  nextStartAt?: number;
 }
 
 export interface ObjectHistory {

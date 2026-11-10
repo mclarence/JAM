@@ -181,7 +181,7 @@ function validDateTime(value: string) {
     Number.isFinite(Date.parse(value));
 }
 
-function validateValue(attribute: ObjectTypeAttribute, value: RuleValue, statuses: StatusType[]): string | null {
+export function validateValue(attribute: ObjectTypeAttribute, value: RuleValue, statuses: StatusType[]): string | null {
   if (!nonempty(value.raw)) return `Choose a value for "${attribute.name}".`;
   switch (ruleValueKind(attribute)) {
     case "readonly":

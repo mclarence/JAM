@@ -6,14 +6,16 @@ import {
   useAssetsInfinite,
   useAttributes,
   useConnection,
+  useDeletionVisibility,
   useObjectTypes,
   useSchemas,
   useStatusTypes,
   useTotalCount,
 } from "@/api/queries";
-import type { AssetObject } from "@/api/types";
-import { retryAssetRefresh } from "@/api/mutationCache";
+import type { AssetObject, ConnectionInfo } from "@/api/types";
+import { isAssetRemoved, retryAssetRefresh } from "@/api/mutationCache";
 import { AssetGrid } from "@/components/assets/AssetGrid";
+import { BatchDeleteDialog } from "@/components/assets/BatchDeleteDialog";
 import { BatchUpdateDialog } from "@/components/assets/BatchUpdateDialog";
 import { ColumnDrawer } from "@/components/assets/ColumnDrawer";
 import { CreateAssetDialog } from "@/components/assets/CreateAssetDialog";
@@ -27,6 +29,7 @@ import { Skeleton } from "@/components/ui/primitives";
 import { useDebounce } from "@/hooks/useDebounce";
 import { useInlineBulkUpdate } from "@/hooks/useInlineBulkUpdate";
 import { buildAssetsQuery } from "@/lib/aql";
+import { deletionScope, type DeletionConfig } from "@/lib/deletion";
 import { sortAttributes } from "@/lib/attributes";
 import { notify } from "@/lib/notify";
 import { useSettings, type ColumnPrefs } from "@/store/settings";
@@ -38,6 +41,7 @@ const DEFAULT_VISIBLE_COUNT = 10;
 export function AssetsPage() {
   const qc = useQueryClient();
   const connection = useConnection();
+  const visibility = useDeletionVisibility();
   const { schemaId, objectTypeId, columns: columnPrefs, setColumnPrefs, resetColumnPrefs } = useSettings();
   const { search, searchField, rawAql, navigate } = useUi();
   const staleAssets = useUi((state) => state.staleAssets);
@@ -58,6 +62,8 @@ export function AssetsPage() {
   const [createOpen, setCreateOpen] = useState(false);
   const [batchOpen, setBatchOpen] = useState(false);
   const [exportOpen, setExportOpen] = useState(false);
+  const [deleteRequest, setDeleteRequest] = useState<{ objects: AssetObject[]; config: DeletionConfig; connection: ConnectionInfo; typeId: string } | null>(null);
+  const deletions = useSettings((s) => s.deletions);
   const debouncedSearch = useDebounce(search, 300);
 
   const sortAttr = sorting[0] ? attributes.find((a) => a.id === sorting[0].id) : undefined;
@@ -80,7 +86,11 @@ export function AssetsPage() {
   const total = useTotalCount(query?.where ?? null);
   const rows = useMemo(() => objects.data?.pages.flatMap((p) => p.values) ?? [], [objects.data]);
 
-  useEffect(() => setRowSelection({}), [query?.where]);
+  useEffect(() => setRowSelection({}), [query?.where, visibility]);
+  useEffect(() => setRowSelection((previous) => {
+    const remaining = Object.entries(previous).filter(([id]) => !isAssetRemoved(qc, id));
+    return remaining.length === Object.keys(previous).length ? previous : Object.fromEntries(remaining);
+  }), [rows, qc]);
 
   // Column visibility & sizing (persisted per object type)
   const prefs: ColumnPrefs | undefined = objectTypeId ? columnPrefs[objectTypeId] : undefined;
@@ -124,7 +134,8 @@ export function AssetsPage() {
     const loadedIds = new Set(loaded);
     return [...loaded, ...Object.keys(rowSelection).filter((id) => rowSelection[id] && !loadedIds.has(id)).sort()];
   }, [selectedObjects, rowSelection]);
-  const exportContext = JSON.stringify([query?.full, search, searchField, rawAql, schemaId, objectTypeId, connection.data]);
+  const deletionConfig = connection.data && objectTypeId ? deletions[deletionScope(connection.data, objectTypeId)] : undefined;
+  const exportContext = JSON.stringify([query?.full, search, searchField, rawAql, schemaId, objectTypeId, connection.data, visibility]);
   const selectionContext = JSON.stringify([exportContext, sorting]);
   const bulk = useInlineBulkUpdate(selectionContext, attributes);
   useEffect(() => setExportOpen(false), [exportContext]);
@@ -298,7 +309,19 @@ export function AssetsPage() {
         onBatchEdit={() => setBatchOpen(true)}
         onExport={() => setExportOpen(true)}
         exportDisabled={!exportReady}
+        onDelete={() => connection.data && objectTypeId && deletionConfig && setDeleteRequest({
+          objects: selectedObjects, config: deletionConfig, connection: connection.data, typeId: objectTypeId,
+        })}
+        deleteDisabledReason={!deletionConfig ? "Configure deletion in Settings → Deletion first" : undefined}
       />
+
+      {deleteRequest && (
+        <BatchDeleteDialog
+          open
+          onOpenChange={(open) => !open && setDeleteRequest(null)}
+          {...deleteRequest}
+        />
+      )}
 
       {exportOpen && exportReady && connection.data && query && (
         <ExportAssetsDialog

@@ -4,6 +4,8 @@ import type { AssetObject, ConnectionInfo, ObjectTypeAttribute } from "@/api/typ
 import { AttrType, DefaultType } from "@/api/types";
 import { displayValue } from "@/lib/attributes";
 import { sameConnection } from "@/lib/ruleMutations";
+import { isSoftDeleted } from "@/lib/deletion";
+import { useSettings } from "@/store/settings";
 
 export function csvRecord(cells: string[]): string {
   return cells.map((cell) => /[",\r\n]/.test(cell) ? `"${cell.replaceAll('"', '""')}"` : cell).join(",") + "\r\n";
@@ -63,6 +65,7 @@ export async function prepareAssetExport(input: ExportInput): Promise<{ csv: str
     if (object.objectType.id !== input.typeId) {
       throw new Error("An exported asset no longer belongs to the selected object type. Retry the export.");
     }
+    if (isSoftDeleted(object, useSettings.getState().deletions, input.connection)) return;
     chunks.push(assetCsvRow(object, input.columns));
     input.onProgress(++count);
   };
@@ -77,10 +80,10 @@ export async function prepareAssetExport(input: ExportInput): Promise<{ csv: str
       if (page.startAt !== start || (!page.values.length && !isLast(page))) {
         throw new Error("The server returned an incomplete export page. Retry the export.");
       }
-      const previousCount = count;
+      const previousCount = seen.size;
       for (const object of page.values) await append(object.id);
       if (isLast(page)) break;
-      if (count === previousCount) throw new Error("Export pagination stopped making progress. Retry the export.");
+      if (seen.size === previousCount) throw new Error("Export pagination stopped making progress. Retry the export.");
       start = page.startAt + page.values.length;
     }
   }

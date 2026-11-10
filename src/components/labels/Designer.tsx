@@ -31,7 +31,7 @@ import {
   ZoomOut,
 } from "lucide-react";
 import { assetsApi } from "@/api/assets";
-import { useAttributes, useConnection, useReferenceSearch } from "@/api/queries";
+import { useAttributes, useConnection, useDeletionVisibility, useReferenceSearch } from "@/api/queries";
 import type { AssetObject } from "@/api/types";
 import { Button } from "@/components/ui/button";
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command";
@@ -42,6 +42,7 @@ import { Label, Separator, Switch } from "@/components/ui/primitives";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useDebounce } from "@/hooks/useDebounce";
 import { cn } from "@/lib/utils";
+import { isSoftDeleted } from "@/lib/deletion";
 import { useSettings } from "@/store/settings";
 import { useTemplates } from "@/store/templates";
 import { useUi } from "@/store/ui";
@@ -73,6 +74,7 @@ export function Designer({ template }: { template: LabelTemplate }) {
   const { update, updateElement, addElement, removeElement } = useTemplates();
   const objectTypeId = useSettings((s) => s.objectTypeId);
   const connection = useConnection();
+  const visibility = useDeletionVisibility();
   const attrs = useAttributes(objectTypeId);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [zoom, setZoom] = useState(2);
@@ -83,7 +85,7 @@ export function Designer({ template }: { template: LabelTemplate }) {
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }));
 
   const sampleFirst = useQuery({
-    queryKey: ["sampleObject", objectTypeId],
+    queryKey: ["sampleObject", objectTypeId, visibility],
     queryFn: async () => (await assetsApi.searchObjects(`objectTypeId = ${Number(objectTypeId)}`, 0, 1)).values[0] ?? null,
     enabled: !!connection.data && !!objectTypeId,
     staleTime: 5 * 60_000,
@@ -91,8 +93,11 @@ export function Designer({ template }: { template: LabelTemplate }) {
   const previewId = useUi((s) => s.previewObjectId);
   const setPreviewId = useUi((s) => s.setPreviewObjectId);
   const chosen = useQuery({
-    queryKey: ["previewObject", previewId],
-    queryFn: () => assetsApi.getObject(previewId!),
+    queryKey: ["previewObject", previewId, visibility],
+    queryFn: async () => {
+      const object = await assetsApi.getObject(previewId!);
+      return isSoftDeleted(object, useSettings.getState().deletions, connection.data ?? null) ? null : object;
+    },
     enabled: !!connection.data && !!previewId,
     staleTime: 5 * 60_000,
   });

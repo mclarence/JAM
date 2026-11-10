@@ -3,6 +3,8 @@ import { assetsApi } from "@/api/assets";
 import { connectionApi, fileApi } from "@/api/client";
 import { DefaultType, type AssetObject, type ConnectionInfo, type ObjectTypeAttribute } from "@/api/types";
 import { assetCsvRow, csvRecord, prepareAssetExport, saveAssetExport, type ExportInput } from "./assetExport";
+import { deletionScope } from "./deletion";
+import { useSettings } from "@/store/settings";
 
 const connection: ConnectionInfo = { cloudId: "cloud", workspaceId: "workspace", siteUrl: "https://example.atlassian.net", email: "test@example.invalid" };
 const columns: ObjectTypeAttribute[] = [{ id: "name", name: "Name", type: 0, label: true }];
@@ -22,10 +24,36 @@ function input(overrides: Partial<ExportInput> = {}): ExportInput {
   };
 }
 beforeEach(() => {
+  useSettings.setState({ deletions: {} });
   vi.spyOn(connectionApi, "get").mockResolvedValue(connection);
   vi.spyOn(assetsApi, "getObject").mockImplementation(async (id) => object(id));
 });
-afterEach(() => vi.restoreAllMocks());
+afterEach(() => { useSettings.setState({ deletions: {} }); vi.restoreAllMocks(); });
+
+describe("deleted asset exports", () => {
+  it.each([true, false])("skips assets marked deleted after selection/search and advances past a wholly deleted page (selected=%s)", async (selected) => {
+    useSettings.getState().setDeletion(deletionScope(connection, "type"), {
+      method: "permanent", marker: { attributeId: "name", attributeName: "Name", value: { raw: "DELETED", display: "" } },
+    });
+    // Selection and AQL pages still contain the original asset; only fresh detail reads see deletion.
+    vi.mocked(assetsApi.getObject).mockImplementation(async (id) => id === "1" ? {
+      ...object(id),
+      attributes: [{ objectTypeAttributeId: "name", objectAttributeValues: [{ value: "DELETED" }] }],
+    } : object(id));
+    const search = vi.spyOn(assetsApi, "searchObjects")
+      .mockResolvedValueOnce(page(["1"], 0, false))
+      .mockResolvedValueOnce(page(["2"], 1, true));
+    const result = await prepareAssetExport(input(selected ? { selectedIds: ["1", "2"] } : {}));
+    expect(result.count).toBe(1);
+    expect(result.csv).toContain("Asset 2");
+    expect(result.csv).not.toContain("Asset 1");
+    expect(result.csv).not.toContain("DELETED");
+    if (!selected) {
+      expect(search).toHaveBeenCalledTimes(2);
+      expect(search).toHaveBeenLastCalledWith(expect.any(String), 1);
+    }
+  });
+});
 
 describe("CSV contract", () => {
   it("preserves exact content and escapes delimiters, quotes, Unicode and newlines", () => {

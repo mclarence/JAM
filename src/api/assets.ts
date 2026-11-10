@@ -1,4 +1,6 @@
-import { assetsRequest } from "./client";
+import { assetsRequest, connectionApi } from "./client";
+import { excludeDeleted } from "@/lib/deletion";
+import { useSettings } from "@/store/settings";
 import type {
   AqlResult,
   AssetObject,
@@ -13,6 +15,12 @@ import type {
 } from "./types";
 
 export const PAGE_SIZE = 100;
+
+async function visibleQuery(query: string) {
+  const configs = useSettings.getState().deletions;
+  if (!Object.keys(configs).length) return query;
+  return excludeDeleted(query, configs, await connectionApi.get());
+}
 
 export const assetsApi = {
   listSchemas: async (): Promise<ObjectSchema[]> => {
@@ -37,14 +45,14 @@ export const assetsApi = {
   getObjectTypeAttributes: (objectTypeId: string) =>
     assetsRequest<ObjectTypeAttribute[]>("GET", `/objecttype/${encodeURIComponent(objectTypeId)}/attributes`),
 
-  searchObjects: (qlQuery: string, startAt = 0, maxResults = PAGE_SIZE) =>
+  searchObjects: async (qlQuery: string, startAt = 0, maxResults = PAGE_SIZE) =>
     assetsRequest<AqlResult>("POST", "/object/aql", {
       query: { startAt, maxResults, includeAttributes: true },
-      body: { qlQuery },
+      body: { qlQuery: await visibleQuery(qlQuery) },
     }),
 
   countObjects: async (qlQuery: string) =>
-    (await assetsRequest<{ totalCount: number }>("POST", "/object/aql/totalcount", { body: { qlQuery } })).totalCount,
+    (await assetsRequest<{ totalCount: number }>("POST", "/object/aql/totalcount", { body: { qlQuery: await visibleQuery(qlQuery) } })).totalCount,
 
   getObject: (id: string) => assetsRequest<AssetObject>("GET", `/object/${encodeURIComponent(id)}`),
 
@@ -52,6 +60,8 @@ export const assetsApi = {
 
   updateObject: (id: string, body: ObjectIn) =>
     assetsRequest<AssetObject>("PUT", `/object/${encodeURIComponent(id)}`, { body }),
+
+  deleteObject: (id: string) => assetsRequest<void>("DELETE", `/object/${encodeURIComponent(id)}`),
 
   getHistory: (id: string) =>
     assetsRequest<ObjectHistory[]>("GET", `/object/${encodeURIComponent(id)}/history`, { query: { asc: false } }),

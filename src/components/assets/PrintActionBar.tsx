@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { ChevronDown, Download, Eye, Loader2, Pencil, Printer, Star, X } from "lucide-react";
+import { ChevronDown, Download, Eye, Loader2, Pencil, Printer, Star, Trash2, X } from "lucide-react";
 import type { AssetObject, ObjectTypeAttribute } from "@/api/types";
 import { PrintDialog } from "@/components/labels/PrintDialog";
 import { printLabels } from "@/components/labels/print";
@@ -27,6 +27,8 @@ export function PrintActionBar({
   onBatchEdit,
   onExport,
   exportDisabled,
+  onDelete,
+  deleteDisabledReason,
 }: {
   selected: AssetObject[];
   attributes: ObjectTypeAttribute[];
@@ -37,6 +39,9 @@ export function PrintActionBar({
   onBatchEdit: () => void;
   onExport: () => void;
   exportDisabled: boolean;
+  onDelete: () => void;
+  /** Shown as a tooltip when deletion is unavailable. */
+  deleteDisabledReason?: string;
 }) {
   const { templates, defaultTemplateId } = useTemplates();
   const output = useSettings((s) => s.labelDefaults.output);
@@ -85,6 +90,11 @@ export function PrintActionBar({
         <Button variant="outline" onClick={onBatchEdit}>
           <Pencil /> Update {count}
         </Button>
+        <span title={deleteDisabledReason}>
+          <Button variant="outline" className="text-destructive hover:text-destructive" disabled={!!deleteDisabledReason} onClick={onDelete}>
+            <Trash2 /> Delete {count}
+          </Button>
+        </span>
 
         {templates.length === 0 ? (
           <Button onClick={() => navigate("templates")}>

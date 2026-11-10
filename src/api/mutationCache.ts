@@ -5,11 +5,14 @@ import type { AqlResult, AssetObject, ConnectionInfo } from "./types";
 import { notify } from "@/lib/notify";
 import { assertConnection, beginAssetRefresh, sameConnection, type RuleMutationResult } from "@/lib/ruleMutations";
 import { useUi } from "@/store/ui";
+import { useSettings } from "@/store/settings";
+import { isSoftDeleted } from "@/lib/deletion";
 
 interface MutationCacheState {
   versions: Map<string, number>;
   published: WeakMap<RuleMutationResult, number>;
   confirmed: Map<string, AssetObject>;
+  removed: Set<string>;
 }
 
 const states = new WeakMap<QueryClient, MutationCacheState>();
@@ -17,7 +20,7 @@ const states = new WeakMap<QueryClient, MutationCacheState>();
 function stateFor(qc: QueryClient): MutationCacheState {
   let state = states.get(qc);
   if (!state) {
-    state = { versions: new Map(), published: new WeakMap(), confirmed: new Map() };
+    state = { versions: new Map(), published: new WeakMap(), confirmed: new Map(), removed: new Set() };
     states.set(qc, state);
   }
   return state;
@@ -44,6 +47,7 @@ export function reconcileAssetPage(qc: QueryClient, page: AqlResult): AqlResult 
   const state = stateFor(qc);
   return {
     ...page,
+    nextStartAt: page.startAt + page.values.length,
     values: page.values.map((object) => {
       const saved = state.confirmed.get(object.id);
       if (!saved) return object;
@@ -52,8 +56,35 @@ export function reconcileAssetPage(qc: QueryClient, page: AqlResult): AqlResult 
         return object;
       }
       return saved;
-    }),
+    }).filter((object) => !state.removed.has(object.id) &&
+      !isSoftDeleted(object, useSettings.getState().deletions, qc.getQueryData<ConnectionInfo | null>(qk.connection) ?? null)),
   };
+}
+
+/** Only call after Jira confirms the delete/update. */
+export function removeDeletedAsset(qc: QueryClient, objectId: string) {
+  const state = stateFor(qc);
+  state.removed.add(objectId);
+  state.confirmed.delete(objectId);
+  state.versions.set(objectId, (state.versions.get(objectId) ?? 0) + 1);
+  qc.setQueriesData<InfiniteData<AqlResult>>({ queryKey: ["objects"] }, (data) => data ? {
+    ...data,
+    pages: data.pages.map((page) => ({
+      ...page, nextStartAt: page.nextStartAt ?? page.startAt + page.values.length,
+      values: page.values.filter((object) => object.id !== objectId),
+    })),
+  } : data);
+  for (const prefix of ["refSearch", "inbound"]) {
+    qc.setQueriesData<AssetObject[]>({ queryKey: [prefix] }, (data) => data?.filter((object) => object.id !== objectId));
+  }
+  qc.removeQueries({ queryKey: qk.object(objectId), exact: true });
+  qc.removeQueries({ queryKey: qk.history(objectId), exact: true });
+  qc.removeQueries({ queryKey: qk.referenceInfo(objectId), exact: true });
+  useUi.getState().clearAssetStale(objectId);
+}
+
+export function isAssetRemoved(qc: QueryClient, objectId: string) {
+  return stateFor(qc).removed.has(objectId);
 }
 
 export function reconcileAssetObject(qc: QueryClient, object: AssetObject): AssetObject {

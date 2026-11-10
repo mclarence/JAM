@@ -3,6 +3,7 @@ import { foldBaseStyle } from "@/components/labels/richText";
 import { SEARCH_KEY } from "@/lib/aql";
 import type { AssetTagConfig } from "@/lib/assetTag";
 import { parseRules, type Rule } from "@/lib/rules";
+import { parseDeletionConfigs, type DeletionConfigs } from "@/lib/deletion";
 import { COLOR_KEYS, type ColorKey } from "@/lib/statusColors";
 import { useSettings, type AqlPreset, type ColumnPrefs, type PdfOutput } from "@/store/settings";
 import { useQuickScan, type ScanAction, type ScanPreset } from "@/store/quickScan";
@@ -13,7 +14,7 @@ import { useThemeStore, type ThemePref } from "@/store/theme";
 const FORMAT = "jira-assets-manager-settings";
 const VERSION = 1;
 
-export type Section = "filters" | "columns" | "assetTags" | "referenceDisplay" | "statusColors" | "rules" | "scanPresets" | "templates" | "preferences";
+export type Section = "filters" | "columns" | "assetTags" | "referenceDisplay" | "statusColors" | "rules" | "deletions" | "scanPresets" | "templates" | "preferences";
 export type ImportMode = "merge" | "replace";
 
 export const SECTION_LABELS: Record<Section, string> = {
@@ -23,6 +24,7 @@ export const SECTION_LABELS: Record<Section, string> = {
   referenceDisplay: "Reference picker display fields",
   statusColors: "Status colours",
   rules: "Rules",
+  deletions: "Deletion settings (workspace and object type)",
   scanPresets: "Quick Scan presets",
   templates: "Label templates",
   preferences: "Preferences (selected schema/type, label defaults, theme)",
@@ -42,6 +44,7 @@ export interface SettingsBundle {
   referenceDisplay?: Record<string, string>;
   statusColors?: Record<string, ColorKey>;
   rules?: Rule[];
+  deletions?: DeletionConfigs;
   /** Quick Scan presets per object type id. */
   scanPresets?: Record<string, ScanPreset[]>;
   templates?: { items: LabelTemplate[]; defaultTemplateId: string | null };
@@ -58,6 +61,7 @@ export function buildExport(): string {
     referenceDisplay: s.referenceDisplay,
     statusColors: s.statusColors,
     rules: s.rules,
+    deletions: s.deletions,
     scanPresets: useQuickScan.getState().presets,
     templates: { items: t.templates, defaultTemplateId: t.defaultTemplateId },
     preferences: {
@@ -242,6 +246,7 @@ export function parseImport(text: string): SettingsBundle {
     bundle.statusColors = mapValues<ColorKey>(raw.statusColors, (c) => (oneOf(c, COLOR_KEYS) ? c : null));
   }
   if ("rules" in raw) bundle.rules = parseRules(raw.rules);
+  if ("deletions" in raw) bundle.deletions = parseDeletionConfigs(raw.deletions);
   if ("scanPresets" in raw) bundle.scanPresets = cleanScanPresets(raw.scanPresets);
   if (isObj(raw.templates)) {
     const items = Array.isArray(raw.templates.items) ? raw.templates.items.flatMap((t) => cleanTemplate(t) ?? []) : [];
@@ -263,6 +268,7 @@ export function sectionCounts(b: SettingsBundle): Partial<Record<Section, number
     ...(b.referenceDisplay && { referenceDisplay: Object.keys(b.referenceDisplay).length }),
     ...(b.statusColors && { statusColors: Object.keys(b.statusColors).length }),
     ...(b.rules && { rules: b.rules.length }),
+    ...(b.deletions && { deletions: Object.keys(b.deletions).length }),
     ...(b.scanPresets && { scanPresets: Object.values(b.scanPresets).reduce((n, l) => n + l.length, 0) }),
     ...(b.templates && { templates: b.templates.items.length }),
     ...(b.preferences && { preferences: 1 }),
@@ -294,6 +300,9 @@ export function applyImport(bundle: SettingsBundle, sections: Set<Section>, mode
   }
   if (sections.has("rules") && bundle.rules) {
     patch.rules = replace ? bundle.rules : mergeById(cur.rules, bundle.rules);
+  }
+  if (sections.has("deletions") && bundle.deletions) {
+    patch.deletions = replace ? bundle.deletions : { ...cur.deletions, ...bundle.deletions };
   }
   if (sections.has("preferences") && bundle.preferences) {
     patch.schemaId = bundle.preferences.schemaId;

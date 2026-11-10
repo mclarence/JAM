@@ -1,7 +1,7 @@
 import { useQueries } from "@tanstack/react-query";
 import { Database, PlugZap, Server } from "lucide-react";
 import { assetsApi } from "@/api/assets";
-import { qk, useAttributes, useConnection, useObjectTypes, useStatusTypes, useTotalCount } from "@/api/queries";
+import { qk, useAttributes, useConnection, useDeletionVisibility, useObjectTypes, useStatusTypes, useTotalCount } from "@/api/queries";
 import { AttrType } from "@/api/types";
 import { StatusBadge } from "@/components/assets/StatusBadge";
 import { EmptyState, PageHeader } from "@/components/layout/PageHeader";
@@ -15,6 +15,7 @@ import { useUi } from "@/store/ui";
 
 export function DashboardPage() {
   const connection = useConnection();
+  const visibility = useDeletionVisibility();
   const { schemaId, objectTypeId, statusColors } = useSettings();
   const { navigate, setRawAql } = useUi();
   const types = useObjectTypes(schemaId);
@@ -32,7 +33,7 @@ export function DashboardPage() {
     queries: allowed.map((s) => {
       const aql = `${base} AND ${aqlAttr(statusAttr?.name ?? "Status")} = ${aqlString(s.name)}`;
       return {
-        queryKey: qk.count(aql),
+        queryKey: [...qk.count(aql), visibility],
         queryFn: () => assetsApi.countObjects(aql),
         enabled: !!base && !!statusAttr,
       };

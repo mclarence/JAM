@@ -22,6 +22,7 @@ import { useSettings } from "@/store/settings";
 import { useUi } from "@/store/ui";
 import { AttributeValue } from "./AttributeValue";
 import { CellEditor } from "./CellEditor";
+import { DeleteAssetButton } from "./DeleteAssetButton";
 
 export function DetailDrawer({ fallback }: { fallback?: (id: string) => AssetObject | undefined }) {
   const { detailObjectId, openDetail } = useUi();
@@ -62,6 +63,7 @@ function DetailBody({ object }: { object: AssetObject }) {
         <SheetDescription>
           {object.objectKey} · {object.objectType.name} · updated {new Date(object.updated).toLocaleString()}
         </SheetDescription>
+        <DeleteAssetButton key={object.id} object={object} disabled={!!stale || update.isPending} />
       </div>
       {stale && (
         <div role="alert" className="flex items-center justify-between gap-3 border-b p-4 text-sm text-destructive">

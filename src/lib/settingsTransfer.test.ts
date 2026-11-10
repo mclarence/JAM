@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { Rule } from "./rules";
 import type { Section } from "./settingsTransfer";
+import { deletionScope } from "./deletion";
 
 vi.mock("@/store/theme", () => ({
   useThemeStore: { getState: () => ({ pref: "system", setPref: vi.fn() }) },
@@ -29,7 +30,27 @@ function rule(id: string): Rule {
 describe("Rules settings transfer and persistence", () => {
   beforeEach(() => {
     data.clear();
-    useSettings.setState({ rules: [] });
+    useSettings.setState({ rules: [], deletions: {} });
+  });
+
+  it("persists and transfers deletion settings without losing workspace scope or retained markers", async () => {
+    const scope = deletionScope({ cloudId: "cloud", workspaceId: "workspace" }, "1");
+    const config = { method: "permanent" as const, marker: { attributeId: "10", attributeName: "Asset Tag", value: { raw: "DELETED", display: "" } } };
+    useSettings.getState().setDeletion(scope, config);
+    const saved = data.get("settings")!;
+    const bundle = parseImport(buildExport());
+    expect(sectionCounts(bundle).deletions).toBe(1);
+    useSettings.setState({ deletions: {} });
+    data.set("settings", saved);
+    await useSettings.persist.rehydrate();
+    expect(useSettings.getState().deletions[scope]).toEqual(config);
+    applyImport({ deletions: { [deletionScope({ cloudId: "cloud", workspaceId: "other" }, "1")]: { method: "permanent" } } }, new Set(["deletions"]), "merge");
+    expect(Object.keys(useSettings.getState().deletions)).toHaveLength(2);
+    applyImport(bundle, new Set(["deletions"]), "replace");
+    expect(useSettings.getState().deletions).toEqual({ [scope]: config });
+    const older = JSON.parse(buildExport());
+    delete older.deletions;
+    expect(parseImport(JSON.stringify(older)).deletions).toBeUndefined();
   });
 
   it("persists ordered rules, exports their count, and restores them", async () => {

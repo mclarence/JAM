@@ -1,5 +1,4 @@
 import {
-  keepPreviousData,
   useInfiniteQuery,
   useMutation,
   useQuery,
@@ -15,11 +14,18 @@ import { allFieldsClause, aqlAttr, aqlString } from "@/lib/aql";
 import { notify } from "@/lib/notify";
 import { beginAssetMutation, createPrepared, prepareCreate, prepareUpdate, updatePrepared } from "@/lib/ruleMutations";
 import { useSettings } from "@/store/settings";
+import { workspaceDeletions } from "@/lib/deletion";
 
 export { qk } from "./queryKeys";
 
 export function useConnection() {
   return useQuery({ queryKey: qk.connection, queryFn: connectionApi.get, staleTime: Infinity });
+}
+
+export function useDeletionVisibility() {
+  const connection = useConnection().data ?? null;
+  const configs = useSettings((s) => s.deletions);
+  return JSON.stringify([connection?.cloudId, connection?.workspaceId, workspaceDeletions(configs, connection)]);
 }
 
 function useConnected() {
@@ -80,22 +86,25 @@ export function useStatusTypes(schemaId: string | null) {
 export function useAssetsInfinite(aql: string | null) {
   const connected = useConnected();
   const qc = useQueryClient();
+  const visibility = useDeletionVisibility();
   return useInfiniteQuery({
-    queryKey: qk.objects(aql ?? ""),
+    queryKey: [...qk.objects(aql ?? ""), visibility],
     queryFn: async ({ pageParam }) => reconcileAssetPage(qc, await assetsApi.searchObjects(aql!, pageParam, PAGE_SIZE)),
     initialPageParam: 0,
     getNextPageParam: (last: AqlResult) =>
-      isLast(last) || last.values.length === 0 ? undefined : last.startAt + last.values.length,
+      isLast(last) || (last.nextStartAt ?? last.startAt + last.values.length) <= last.startAt
+        ? undefined : last.nextStartAt ?? last.startAt + last.values.length,
     enabled: connected && !!aql,
-    placeholderData: keepPreviousData,
+    placeholderData: (previous, query) => query?.queryKey[2] === visibility ? previous : undefined,
     retry: false,
   });
 }
 
 export function useTotalCount(aql: string | null) {
   const connected = useConnected();
+  const visibility = useDeletionVisibility();
   return useQuery({
-    queryKey: qk.count(aql ?? ""),
+    queryKey: [...qk.count(aql ?? ""), visibility],
     queryFn: () => assetsApi.countObjects(aql!),
     enabled: connected && !!aql,
     retry: false,
@@ -125,29 +134,33 @@ export function useReferenceInfo(id: string | null) {
 
 /** Objects that reference the given object. */
 export function useInboundReferences(objectKey: string | null) {
+  const visibility = useDeletionVisibility();
+  const qc = useQueryClient();
   return useQuery({
-    queryKey: qk.inbound(objectKey ?? ""),
+    queryKey: [...qk.inbound(objectKey ?? ""), visibility],
     queryFn: async () =>
-      (await assetsApi.searchObjects(`object HAVING outboundReferences(Key = ${aqlString(objectKey!)})`, 0, 50))
+      reconcileAssetPage(qc, await assetsApi.searchObjects(`object HAVING outboundReferences(Key = ${aqlString(objectKey!)})`, 0, 50))
         .values,
     enabled: !!objectKey,
   });
 }
 
 export function useReferenceSearch(refTypeId: string | undefined, term: string) {
+  const visibility = useDeletionVisibility();
+  const qc = useQueryClient();
   const attrs = useAttributes(refTypeId);
   const labelAttr = attrs.data?.find((a) => a.label)?.name ?? "Name";
   const search = useQuery({
-    queryKey: qk.refSearch(refTypeId ?? "", term),
+    queryKey: [...qk.refSearch(refTypeId ?? "", term), visibility],
     queryFn: async () => {
       const t = term.trim();
       let q = `objectTypeId = ${Number(refTypeId)}`;
       if (t) q += ` AND ${allFieldsClause(t, attrs.data ?? [])}`;
       q += ` ORDER BY ${aqlAttr(labelAttr)} ASC`;
-      return (await assetsApi.searchObjects(q, 0, 25)).values;
+      return reconcileAssetPage(qc, await assetsApi.searchObjects(q, 0, 25)).values;
     },
     enabled: !!refTypeId && attrs.isSuccess,
-    placeholderData: keepPreviousData,
+    placeholderData: (previous, query) => query?.queryKey[3] === visibility ? previous : undefined,
   });
   return {
     ...search,

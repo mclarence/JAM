@@ -3,6 +3,7 @@ import { persist } from "zustand/middleware";
 import { DEFAULT_STATUS_COLORS, type ColorKey } from "@/lib/statusColors";
 import type { AssetTagConfig } from "@/lib/assetTag";
 import type { Rule } from "@/lib/rules";
+import type { DeletionConfig, DeletionConfigs } from "@/lib/deletion";
 import { fileStorage } from "./persist";
 
 export interface AqlPreset {
@@ -32,6 +33,8 @@ interface SettingsState {
   /** Referenced object type id -> attribute id shown beside the label in reference pickers; absent = object key. */
   referenceDisplay: Record<string, string>;
   rules: Rule[];
+  deletions: DeletionConfigs;
+  setDeletion: (scope: string, config: DeletionConfig) => void;
 
   setSchema: (schemaId: string | null) => void;
   setObjectType: (objectTypeId: string | null) => void;
@@ -61,6 +64,8 @@ export const useSettings = create<SettingsState>()(
       labelDefaults: { unit: "mm", width: 62, height: 29, output: "open" },
       referenceDisplay: {},
       rules: [],
+      deletions: {},
+      setDeletion: (scope, config) => set((s) => ({ deletions: { ...s.deletions, [scope]: config } })),
 
       setSchema: (schemaId) => set({ schemaId, objectTypeId: null }),
       setObjectType: (objectTypeId) => set({ objectTypeId }),
