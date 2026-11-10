@@ -1,0 +1,40 @@
+{
+  "batch": {
+    "batchId": "ffeeddccbbaa99887766554433221100",
+    "envelope": {
+      "batchId": "ffeeddccbbaa99887766554433221100",
+      "ciphertext": "u6PrLwgnvupBVxIzMSf2lq7a4kVMqh3FX8nvSZyJS8+u2s4M4BmWWIgKYBS4uO/gaNTACsGZRqg+hPZSF5+9AuI8rGNA0ldlf20P4F5H0ntTN28o4qgFbWvXNZbc4emKrwLk1FALdNvPUIePpP0tHmVRY8AtnlcZuCI4ZLs2IBDXXJ+30uA7n+puzkKjDOGZ3yHxvvO7srAv+e7xPeP2W3O1fkQqapOXMZIdoj4I7B6JFr7sM0+1YcFkCGNNzB7aF7DIksIZ+l3EiUt894HmgNlXYCwH/X3vvLurf4hdiUf7lppWC1cAAHUdTpMoLKKkEker+lhWBafHoio+ssc+tVXlvLUg5Ob6uAv4YJ/F8zP1GpbxMwg=",
+      "format": "jam-sync-batch",
+      "generationId": "0123456789abcdef0123456789abcdef",
+      "nonce": "AwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMD",
+      "scope": "shared",
+      "version": 1
+    },
+    "nonce": "AwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMD",
+    "plaintext": "{\"format\":\"jam-sync-changes\",\"version\":1,\"deviceId\":\"fedcba9876543210fedcba9876543210\",\"platform\":\"desktop\",\"createdAt\":\"2026-01-01T00:00:00Z\",\"records\":[{\"key\":\"theme\",\"versionId\":\"00112233445566778899aabbccddeeff\",\"parents\":[],\"deleted\":false,\"value\":\"dark\"}]}",
+    "scope": "shared"
+  },
+  "createdAt": "2026-01-01T00:00:00Z",
+  "dataKey": "KioqKioqKioqKioqKioqKioqKioqKioqKioqKioqKio=",
+  "generationId": "0123456789abcdef0123456789abcdef",
+  "password": "Pässwörd 🔐 with spaces",
+  "salt": "BwcHBwcHBwcHBwcHBwcHBw==",
+  "vault": {
+    "createdAt": "2026-01-01T00:00:00Z",
+    "format": "jam-sync-vault",
+    "generationId": "0123456789abcdef0123456789abcdef",
+    "kdf": {
+      "alg": "argon2id13",
+      "iterations": 3,
+      "memKiB": 65536,
+      "parallelism": 1,
+      "salt": "BwcHBwcHBwcHBwcHBwcHBw=="
+    },
+    "version": 1,
+    "wrap": {
+      "ciphertext": "KaLkFEwdrXsLxGKfGWXjvMnt955+mo4sK3Wh1Z3RJ/CBAODYPjCg9Rooaq4za2Fm",
+      "nonce": "CQkJCQkJCQkJCQkJCQkJCQkJCQkJCQkJ"
+    }
+  },
+  "wrapNonce": "CQkJCQkJCQkJCQkJCQkJCQkJCQkJCQkJ"
+}

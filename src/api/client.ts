@@ -1,4 +1,5 @@
 import { Channel, invoke, isTauri } from "@tauri-apps/api/core";
+import type { PulledBatch } from "@/lib/sync/engine";
 import type { ConnectionInfo } from "./types";
 
 export type ApiErrorKind =
@@ -14,6 +15,9 @@ export type ApiErrorKind =
   | "invalid"
   | "io"
   | "update"
+  | "syncAuth"
+  | "syncStale"
+  | "cancelled"
   | "unknown";
 
 export class ApiError extends Error {
@@ -128,4 +132,40 @@ export const updaterApi = {
   },
   /** Relaunches the app, so it does not resolve on success. */
   install: () => call<void>("install_update"),
+};
+
+
+export interface SyncStatus {
+  /** False when this build has no Google OAuth client ID. */
+  configured: boolean;
+  signedIn: boolean;
+  email: string | null;
+  /** Set once this device has unlocked a vault. */
+  generationId: string | null;
+  deviceId: string | null;
+}
+
+export interface SyncVault {
+  generationId: string;
+  createdAt: string;
+}
+
+export const syncApi = {
+  status: () =>
+    isTauri()
+      ? call<SyncStatus>("sync_get_status")
+      : Promise.resolve<SyncStatus>({ configured: false, signedIn: false, email: null, generationId: null, deviceId: null }),
+  signIn: () => call<SyncStatus>("sync_sign_in"),
+  signInCancel: () => call<void>("sync_sign_in_cancel"),
+  disconnect: () => call<SyncStatus>("sync_disconnect"),
+  listVaults: () => call<SyncVault[]>("sync_list_vaults"),
+  createVault: (password: string) => call<SyncStatus>("sync_create_vault", { password, createdAt: new Date().toISOString() }),
+  unlockVault: (generationId: string, password: string) => call<SyncStatus>("sync_unlock_vault", { generationId, password }),
+  reset: (password: string) =>
+    call<{ status: SyncStatus; cleanupFailures: number }>("sync_reset", { password, createdAt: new Date().toISOString() }),
+  pull: (scopes: readonly string[], known: string[]) =>
+    call<{ batches: PulledBatch[]; listed: string[]; stale: boolean }>("sync_pull", { scopes, known }),
+  push: (batchId: string, scope: string, plaintext: string) => call<void>("sync_push", { batchId, scope, plaintext }),
+  stateLoad: () => call<string | null>("sync_state_load"),
+  stateSave: (state: string) => call<void>("sync_state_save", { state }),
 };

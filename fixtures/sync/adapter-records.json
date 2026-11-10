@@ -1,0 +1,66 @@
+{
+  "description": "Canonical sync records. Applying every record for a platform's scopes to empty settings and projecting again must reproduce them exactly (docs/sync-protocol.md §6).",
+  "connection": { "siteUrl": "https://example.atlassian.net", "email": "admin@example.com", "cloudId": "cloud-1", "workspaceId": "ws-1" },
+  "shared": {
+    "shared|connection": { "siteUrl": "https://example.atlassian.net", "email": "admin@example.com", "cloudId": "cloud-1", "workspaceId": "ws-1" },
+    "shared|selection": { "cloudId": "cloud-1", "workspaceId": "ws-1", "schemaId": "7", "objectTypeId": "42" },
+    "shared|theme": "dark",
+    "shared|filter:f1": { "name": "Laptops", "aql": "objectType = \"Laptop\"" },
+    "shared|statusColor:active": "blue",
+    "shared|statusColor:retired": null,
+    "shared|statusColor:lost%20%26%20found": "red",
+    "shared|columns:cloud-1:ws-1:42": { "hidden": ["a3"], "order": ["a1", "a2", "a3"] },
+    "shared|columns:cloud-1:ws-1:43": { "hidden": [] },
+    "shared|assetTag:cloud-1:ws-1:42": { "attributeId": "a9", "template": "IT-{0000}" },
+    "shared|referenceDisplay:cloud-1:ws-1:43": "a5",
+    "shared|rule:r1": {
+      "id": "r1", "name": "Stamp location", "enabled": true, "cloudId": "cloud-1", "workspaceId": "ws-1", "schemaId": "7", "objectTypeId": "42",
+      "operations": ["edit", "scan"], "watchedAttributeIds": ["a2"], "match": "all",
+      "conditions": [
+        { "id": "c1", "attributeId": "a2", "operator": "equals", "value": { "raw": "10", "display": "Sydney", "referenceId": "10" } },
+        { "id": "c2", "attributeId": "a4", "operator": "isSet" }
+      ],
+      "actions": [
+        { "id": "x1", "attributeId": "a6", "mode": "set", "value": { "raw": "In use", "display": "In use" } },
+        { "id": "x2", "attributeId": "a7", "mode": "clear" }
+      ]
+    },
+    "shared|rule:r2": {
+      "id": "r2", "name": "Second", "enabled": false, "cloudId": "cloud-1", "workspaceId": "ws-1", "schemaId": "7", "objectTypeId": "42",
+      "operations": ["batch"], "watchedAttributeIds": ["a4"], "match": "any",
+      "conditions": [{ "id": "c3", "attributeId": "a4", "operator": "isEmpty" }],
+      "actions": [{ "id": "x3", "attributeId": "a7", "mode": "clear" }]
+    },
+    "shared|ruleOrder:cloud-1:ws-1:42": ["r2", "r1"],
+    "shared|deletion:cloud-1:ws-1:42": {
+      "method": "soft",
+      "marker": { "attributeId": "a8", "attributeName": "Deleted", "value": { "raw": "DELETED", "display": "DELETED" } },
+      "additional": { "attributeId": "a6", "attributeName": "Status", "value": { "raw": "3", "display": "Retired" } }
+    },
+    "shared|scanConfig:cloud-1:ws-1:42": {
+      "lookups": ["__key__", "a2"],
+      "actions": [{ "id": "s1", "attrId": "a6", "mode": "set", "value": "3", "display": "Retired" }],
+      "presetId": "p1"
+    },
+    "shared|scanPreset:cloud-1:ws-1:42:p1": {
+      "name": "Retire",
+      "lookups": ["__key__"],
+      "actions": [
+        { "id": "s2", "attrId": "a6", "mode": "set", "value": "3", "display": "Retired" },
+        { "id": "s3", "attrId": "a10", "mode": "now", "value": "", "display": "" }
+      ]
+    },
+    "shared|scanSound": false
+  },
+  "desktop": {
+    "desktop|template:t1": {
+      "id": "t1", "name": "Asset label", "unit": "mm", "width": 62, "height": 29, "layout": { "mode": "single" },
+      "elements": [{ "id": "e1", "kind": "barcode", "x": 1, "y": 1, "w": 20, "h": 20, "symbology": "qrcode", "value": "{key}", "showText": false }],
+      "updatedAt": 1700000000000
+    },
+    "desktop|defaultTemplate": "t1",
+    "desktop|labelDefaults": { "unit": "in", "width": 2, "height": 1 },
+    "desktop|columnSizes:cloud-1:ws-1:42": { "a1": 120, "a2": 80 },
+    "desktop|updater": { "channel": "nightly", "autoCheck": false }
+  }
+}

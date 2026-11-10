@@ -54,11 +54,11 @@ Built for handheld barcode/QR scanners. Scan or type a value and press Enter to 
 - Per-scan result log showing updated, unchanged and failed scans, with optional audio feedback.
 
 ### Rules
-Rules automatically set or clear attributes as part of saves made in this app. Open **Settings → Rules**, select a schema and object type, then create, edit, enable, disable, delete or reorder rules. Rules are stored locally for the Jira workspace and object type; they do not sync with the iOS app or run for changes made in Jira or another client. Desktop settings exports can include rules.
+Rules automatically set or clear attributes as part of saves made in this app. Open **Settings → Rules**, select a schema and object type, then create, edit, enable, disable, delete or reorder rules. Rules are stored for the Jira workspace and object type and, with [settings sync](#settings-sync) on, sync to your other devices including the iOS app. They do not run for changes made in Jira or another client. Desktop settings exports can include rules.
 
 ### Deleting assets
 
-Open **Settings → Deletion** for the selected object type and save a method. Deletion is unavailable by default. Configuration is local to the Jira cloud/workspace and object type, persists across restarts, and can be included in desktop settings backups; it does not sync with iOS.
+Open **Settings → Deletion** for the selected object type and save a method. Deletion is unavailable by default. Configuration is local to the Jira cloud/workspace and object type, persists across restarts, can be included in desktop settings backups, and syncs to your other devices including iOS when [settings sync](#settings-sync) is on.
 
 - **Permanently delete** sends Jira's actual object `DELETE` request. Jira object-delete permission and the appropriate API token scope (`delete:cmdb-object:jira` for scoped tokens) are required. Permission failures are shown, never silently replaced by soft deletion.
 - **Soft delete** sets a required editable, single-valued text or select marker to your chosen value, for example **Asset Tag = DELETED**. Optionally update another supported editable attribute/value, such as **Status = Retired** or **Room = Retired storage**. Both changes are sent together; edit rules do not run and cannot overwrite the marker. Jira validation/permission errors leave the asset visible. A unique marker attribute may reject reusing the same marker value on multiple assets; choose a non-unique field if needed.
@@ -93,6 +93,19 @@ Rules are client-side, not server-side automation or an atomic compare-and-set. 
 - **Label defaults**: default template, unit, label size and print action.
 - **Backup**: export and import settings to a JSON file, with optional passphrase encryption (Argon2-derived key). Connection details are only included in, and restored from, encrypted exports.
 - **Updates**: built-in updater with stable and nightly channels.
+- **Sync**: end-to-end encrypted settings sync between devices; see [Settings sync](#settings-sync).
+
+### Settings sync
+
+Open **Settings → Sync** and sign in with Google, then choose a sync password (at least 8 characters). On each other device, sign in with the same Google account and enter that password. Settings are encrypted on the device with a key protected by your password (Argon2id, XChaCha20-Poly1305) and stored in the app's hidden Google Drive app-data folder, so Google cannot read them. There is no password recovery: **Reset sync** starts again with this device's settings and a new password, and other devices must then enter the new password.
+
+| Syncs with | Settings |
+| --- | --- |
+| All devices (desktop and iOS) | Site URL and email, selected schema and object type, theme, saved filters, status colours, columns, asset tags, reference fields, rules, deletion settings, Quick Scan settings |
+| Other computers only | Label templates and default template, label defaults, column widths, update settings |
+| Never | Jira API token (enter it on each device), network/proxy options, the Google sign-in itself |
+
+Label templates and other desktop-only features are synced in a desktop-only scope that the iOS app never downloads or changes, so iOS keeps working normally without them. Changes sync automatically a few seconds after you make them and every few minutes while the app is open; **Sync now** runs immediately. The first sync on a device shows a preview before merging. If two devices change the same setting before syncing, you choose which version to keep. A synced connection is only suggested on a new device: you still enter your API token there. The protocol is specified in [docs/sync-protocol.md](docs/sync-protocol.md).
 
 ### Other
 - Frameless custom title bar with native window controls.
@@ -178,6 +191,21 @@ pnpm test:browser              # Mocked inline bulk editing in Chromium and WebK
 
 pnpm tauri build               # installers in src-tauri/target/release/bundle
 ```
+
+### Settings sync: Google OAuth client
+
+Settings sync is unavailable unless the build includes a Google OAuth client ID. In one [Google Cloud project](https://console.cloud.google.com/) (shared with the iOS app, so both use the same Drive app-data folder):
+
+1. Enable the **Google Drive API**.
+2. Configure the OAuth consent screen and add the scopes `.../auth/drive.appdata`, `openid` and `email`. While the app is in testing, add your Google accounts as test users.
+3. Create an OAuth client of type **Desktop app**. Its secret is not confidential for installed apps, but Google requires it for desktop clients.
+4. Build with the client details in the environment (they are compiled in):
+
+```sh
+JAM_GOOGLE_CLIENT_ID=1234-abc.apps.googleusercontent.com JAM_GOOGLE_CLIENT_SECRET=GOCSPX-... pnpm tauri build
+```
+
+The release and nightly workflows read the `JAM_GOOGLE_CLIENT_ID` and `JAM_GOOGLE_CLIENT_SECRET` repository secrets.
 
 ### Updater signing
 

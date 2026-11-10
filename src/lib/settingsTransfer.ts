@@ -192,7 +192,7 @@ function cleanLayout(l: unknown): SheetLayout | null {
   return null;
 }
 
-function cleanTemplate(t: unknown): LabelTemplate | null {
+export function cleanTemplate(t: unknown): LabelTemplate | null {
   if (!isObj(t) || !isStr(t.id) || !isStr(t.name) || !oneOf(t.unit, ["mm", "in", "px"] as const) || !isPos(t.width) || !isPos(t.height)) {
     return null;
   }

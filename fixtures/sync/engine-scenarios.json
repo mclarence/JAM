@@ -1,0 +1,171 @@
+{
+  "description": "Engine scenarios shared by the desktop (TypeScript) and iOS (Swift) sync engines. Each device has scopes [\"shared\", <platform>]. 'sync' runs a full sync; with \"confirm\": false it only pulls (first-merge preview). Values are record values; 'absent' lists records with no local value.",
+  "scenarios": [
+    {
+      "name": "shared settings round-trip desktop -> iOS -> desktop",
+      "devices": { "d1": "desktop", "ios": "ios", "d2": "desktop" },
+      "steps": [
+        { "do": "set", "device": "d1", "values": { "shared|theme": "dark", "shared|filter:f1": { "name": "Laptops", "aql": "Type = Laptop" } } },
+        { "do": "sync", "device": "d1" },
+        { "do": "sync", "device": "ios" },
+        { "do": "expect", "device": "ios", "values": { "shared|theme": "dark", "shared|filter:f1": { "name": "Laptops", "aql": "Type = Laptop" } } },
+        { "do": "set", "device": "ios", "values": { "shared|filter:f1": { "name": "All laptops", "aql": "Type = Laptop" } } },
+        { "do": "delete", "device": "ios", "keys": ["shared|theme"] },
+        { "do": "sync", "device": "ios" },
+        { "do": "sync", "device": "d2" },
+        { "do": "expect", "device": "d2", "values": { "shared|filter:f1": { "name": "All laptops", "aql": "Type = Laptop" } }, "absent": ["shared|theme"], "conflicts": [] },
+        { "do": "sync", "device": "d1" },
+        { "do": "expect", "device": "d1", "values": { "shared|filter:f1": { "name": "All laptops", "aql": "Type = Laptop" } }, "absent": ["shared|theme"], "conflicts": [] }
+      ]
+    },
+    {
+      "name": "desktop-only label templates skip iOS and reach other desktops unchanged",
+      "devices": { "d1": "desktop", "ios": "ios", "d2": "desktop" },
+      "steps": [
+        { "do": "set", "device": "d1", "values": { "desktop|template:t1": { "name": "Asset label", "width": 62 }, "desktop|defaultTemplate": "t1", "shared|theme": "dark" } },
+        { "do": "sync", "device": "d1" },
+        { "do": "sync", "device": "ios" },
+        { "do": "expect", "device": "ios", "values": { "shared|theme": "dark" }, "absent": ["desktop|template:t1", "desktop|defaultTemplate"], "conflicts": [] },
+        { "do": "set", "device": "ios", "values": { "shared|theme": "light" } },
+        { "do": "sync", "device": "ios" },
+        { "do": "sync", "device": "d2" },
+        { "do": "expect", "device": "d2", "values": { "desktop|template:t1": { "name": "Asset label", "width": 62 }, "desktop|defaultTemplate": "t1", "shared|theme": "light" }, "conflicts": [] },
+        { "do": "set", "device": "d2", "values": { "desktop|template:t1": { "name": "Asset label", "width": 50 } } },
+        { "do": "set", "device": "d1", "values": { "desktop|template:t1": { "name": "Asset label", "width": 70 } } },
+        { "do": "sync", "device": "d2" },
+        { "do": "sync", "device": "d1" },
+        { "do": "sync", "device": "ios" },
+        { "do": "expect", "device": "d1", "conflicts": ["desktop|template:t1"] },
+        { "do": "expect", "device": "ios", "values": { "shared|theme": "light" }, "conflicts": [] }
+      ]
+    },
+    {
+      "name": "malformed or newer desktop-only data does not affect iOS",
+      "devices": { "d1": "desktop", "ios": "ios" },
+      "steps": [
+        { "do": "set", "device": "d1", "values": { "shared|scanSound": false } },
+        { "do": "sync", "device": "d1" },
+        { "do": "inject", "scope": "desktop", "plaintext": "{\"format\":\"jam-sync-changes\",\"version\":2,\"records\":[]}" },
+        { "do": "inject", "scope": "desktop", "plaintext": "not json" },
+        { "do": "sync", "device": "ios" },
+        { "do": "expect", "device": "ios", "values": { "shared|scanSound": false }, "conflicts": [] },
+        { "do": "syncError", "device": "d1", "contains": "newer version" }
+      ]
+    },
+    {
+      "name": "concurrent different edits conflict, then resolve everywhere",
+      "devices": { "a": "desktop", "b": "ios" },
+      "steps": [
+        { "do": "set", "device": "a", "values": { "shared|statusColor:active": "green" } },
+        { "do": "sync", "device": "a" },
+        { "do": "sync", "device": "b" },
+        { "do": "set", "device": "a", "values": { "shared|statusColor:active": "blue" } },
+        { "do": "set", "device": "b", "values": { "shared|statusColor:active": "purple" } },
+        { "do": "sync", "device": "a" },
+        { "do": "sync", "device": "b" },
+        { "do": "sync", "device": "a" },
+        { "do": "expect", "device": "a", "values": { "shared|statusColor:active": "blue" }, "conflicts": ["shared|statusColor:active"] },
+        { "do": "expect", "device": "b", "values": { "shared|statusColor:active": "purple" }, "conflicts": ["shared|statusColor:active"] },
+        { "do": "resolve", "device": "b", "key": "shared|statusColor:active", "value": "blue" },
+        { "do": "sync", "device": "b" },
+        { "do": "sync", "device": "a" },
+        { "do": "expect", "device": "a", "values": { "shared|statusColor:active": "blue" }, "conflicts": [] },
+        { "do": "expect", "device": "b", "values": { "shared|statusColor:active": "blue" }, "conflicts": [] }
+      ]
+    },
+    {
+      "name": "equal concurrent edits converge without a prompt",
+      "devices": { "a": "desktop", "b": "ios" },
+      "steps": [
+        { "do": "set", "device": "a", "values": { "shared|theme": "dark" } },
+        { "do": "set", "device": "b", "values": { "shared|theme": "dark" } },
+        { "do": "sync", "device": "a" },
+        { "do": "sync", "device": "b" },
+        { "do": "sync", "device": "a" },
+        { "do": "expect", "device": "a", "values": { "shared|theme": "dark" }, "conflicts": [] },
+        { "do": "expect", "device": "b", "values": { "shared|theme": "dark" }, "conflicts": [] },
+        { "do": "set", "device": "a", "values": { "shared|theme": "light" } },
+        { "do": "sync", "device": "a" },
+        { "do": "sync", "device": "b" },
+        { "do": "expect", "device": "b", "values": { "shared|theme": "light" }, "conflicts": [] }
+      ]
+    },
+    {
+      "name": "edit versus delete is a conflict; choosing delete removes it everywhere",
+      "devices": { "a": "desktop", "b": "ios" },
+      "steps": [
+        { "do": "set", "device": "a", "values": { "shared|rule:r1": { "name": "Set status", "enabled": true } } },
+        { "do": "sync", "device": "a" },
+        { "do": "sync", "device": "b" },
+        { "do": "delete", "device": "a", "keys": ["shared|rule:r1"] },
+        { "do": "set", "device": "b", "values": { "shared|rule:r1": { "name": "Set status", "enabled": false } } },
+        { "do": "sync", "device": "a" },
+        { "do": "sync", "device": "b" },
+        { "do": "expect", "device": "b", "values": { "shared|rule:r1": { "name": "Set status", "enabled": false } }, "conflicts": ["shared|rule:r1"] },
+        { "do": "resolve", "device": "b", "key": "shared|rule:r1", "delete": true },
+        { "do": "sync", "device": "b" },
+        { "do": "sync", "device": "a" },
+        { "do": "expect", "device": "a", "absent": ["shared|rule:r1"], "conflicts": [] },
+        { "do": "expect", "device": "b", "absent": ["shared|rule:r1"], "conflicts": [] }
+      ]
+    },
+    {
+      "name": "new device with defaults does not overwrite established settings",
+      "devices": { "a": "desktop", "b": "ios" },
+      "steps": [
+        { "do": "set", "device": "a", "values": { "shared|scanSound": false, "shared|filter:f1": { "name": "Mine", "aql": "Owner = me" } } },
+        { "do": "sync", "device": "a" },
+        { "do": "sync", "device": "b", "confirm": false },
+        { "do": "preview", "device": "b", "incoming": ["shared|filter:f1", "shared|scanSound"], "outgoing": 0, "conflicts": [] },
+        { "do": "expect", "device": "b", "absent": ["shared|scanSound", "shared|filter:f1"] },
+        { "do": "sync", "device": "b" },
+        { "do": "expect", "device": "b", "values": { "shared|scanSound": false, "shared|filter:f1": { "name": "Mine", "aql": "Owner = me" } }, "conflicts": [] }
+      ]
+    },
+    {
+      "name": "first merge of two established devices previews overlaps and prompts only for differences",
+      "devices": { "a": "desktop", "b": "ios" },
+      "steps": [
+        { "do": "set", "device": "a", "values": { "shared|theme": "dark", "shared|filter:f1": { "name": "A", "aql": "x" }, "shared|statusColor:active": "green" } },
+        { "do": "set", "device": "b", "values": { "shared|theme": "light", "shared|filter:f2": { "name": "B", "aql": "y" }, "shared|statusColor:active": "green" } },
+        { "do": "sync", "device": "a" },
+        { "do": "sync", "device": "b", "confirm": false },
+        { "do": "preview", "device": "b", "incoming": ["shared|filter:f1"], "outgoing": 3, "conflicts": ["shared|theme"] },
+        { "do": "sync", "device": "b" },
+        { "do": "sync", "device": "a" },
+        { "do": "expect", "device": "a", "values": { "shared|filter:f2": { "name": "B", "aql": "y" }, "shared|theme": "dark" }, "conflicts": ["shared|theme"] },
+        { "do": "expect", "device": "b", "values": { "shared|filter:f1": { "name": "A", "aql": "x" }, "shared|theme": "light", "shared|statusColor:active": "green" }, "conflicts": ["shared|theme"] }
+      ]
+    },
+    {
+      "name": "repeated and out-of-order uploads converge",
+      "devices": { "a": "desktop", "b": "desktop", "c": "ios" },
+      "steps": [
+        { "do": "set", "device": "a", "values": { "shared|theme": "dark" } },
+        { "do": "sync", "device": "a" },
+        { "do": "set", "device": "a", "values": { "shared|theme": "light" } },
+        { "do": "sync", "device": "a" },
+        { "do": "reverseCloud" },
+        { "do": "duplicateCloud" },
+        { "do": "sync", "device": "c" },
+        { "do": "expect", "device": "c", "values": { "shared|theme": "light" }, "conflicts": [] },
+        { "do": "sync", "device": "b" },
+        { "do": "expect", "device": "b", "values": { "shared|theme": "light" }, "conflicts": [] }
+      ]
+    },
+    {
+      "name": "null is a value distinct from deletion",
+      "devices": { "a": "desktop", "b": "ios" },
+      "steps": [
+        { "do": "set", "device": "a", "values": { "shared|statusColor:retired": null } },
+        { "do": "sync", "device": "a" },
+        { "do": "sync", "device": "b" },
+        { "do": "expect", "device": "b", "values": { "shared|statusColor:retired": null }, "conflicts": [] },
+        { "do": "delete", "device": "b", "keys": ["shared|statusColor:retired"] },
+        { "do": "sync", "device": "b" },
+        { "do": "sync", "device": "a" },
+        { "do": "expect", "device": "a", "absent": ["shared|statusColor:retired"], "conflicts": [] }
+      ]
+    }
+  ]
+}

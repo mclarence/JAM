@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { CheckCircle2, ChevronDown, ChevronRight, Globe, Loader2, LogOut, PlugZap, TriangleAlert } from "lucide-react";
+import { CheckCircle2, ChevronDown, ChevronRight, CloudDownload, Globe, Loader2, LogOut, PlugZap, TriangleAlert } from "lucide-react";
 import { connectionApi, networkApi } from "@/api/client";
 import { resetMutationCaches } from "@/api/mutationCache";
 import { qk, useConnection } from "@/api/queries";
@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, Checkbox, Label } from "@/components/ui/primitives";
 import { notify } from "@/lib/notify";
+import { useSync } from "@/store/sync";
 
 export function ConnectionTab() {
   const qc = useQueryClient();
@@ -19,6 +20,7 @@ export function ConnectionTab() {
   const [proxyUrl, setProxyUrl] = useState("");
   const [showAdvanced, setShowAdvanced] = useState(false);
   const [signInOpen, setSignInOpen] = useState(false);
+  const synced = useSync((s) => s.suggestedConnection);
 
   const network = useQuery({ queryKey: ["network"], queryFn: networkApi.get, staleTime: Infinity });
   useEffect(() => {
@@ -97,6 +99,28 @@ export function ConnectionTab() {
           </div>
           <Button variant="outline" size="sm" onClick={() => disconnect.mutate()} disabled={disconnect.isPending}>
             <LogOut /> Disconnect
+          </Button>
+        </Card>
+      )}
+
+      {synced && (synced.siteUrl !== siteUrl || synced.email !== email) && (
+        <Card className="flex items-center gap-3 p-4">
+          <CloudDownload className="size-5 shrink-0 text-muted-foreground" />
+          <div className="min-w-0 flex-1 text-sm">
+            <p className="font-medium">Synced connection available</p>
+            <p className="truncate text-muted-foreground">
+              {synced.siteUrl} as {synced.email}. Enter your API token for this device to connect.
+            </p>
+          </div>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => {
+              setSiteUrl(synced.siteUrl);
+              setEmail(synced.email);
+            }}
+          >
+            Use these details
           </Button>
         </Card>
       )}

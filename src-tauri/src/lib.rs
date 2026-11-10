@@ -3,8 +3,11 @@ mod connection;
 mod crypto;
 mod error;
 mod files;
+mod google;
 mod http;
 mod proxy;
+mod sync;
+mod sync_crypto;
 mod updater;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -16,6 +19,7 @@ pub fn run() {
         .plugin(tauri_plugin_updater::Builder::new().build())
         .manage(connection::AppState::new())
         .manage(updater::UpdaterState::default())
+        .manage(sync::SyncManager::default())
         .invoke_handler(tauri::generate_handler![
             connection::connect,
             connection::get_connection,
@@ -35,6 +39,18 @@ pub fn run() {
             updater::check_update,
             updater::download_update,
             updater::install_update,
+            sync::sync_get_status,
+            sync::sync_sign_in,
+            sync::sync_sign_in_cancel,
+            sync::sync_disconnect,
+            sync::sync_list_vaults,
+            sync::sync_create_vault,
+            sync::sync_unlock_vault,
+            sync::sync_reset,
+            sync::sync_pull,
+            sync::sync_push,
+            sync::sync_state_load,
+            sync::sync_state_save,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

@@ -25,6 +25,14 @@ pub enum AppError {
     Io(String),
     #[error("Update error: {0}")]
     Update(String),
+    /// Google sign-in is missing, expired, or revoked.
+    #[error("{0}")]
+    SyncAuth(String),
+    /// This device's sync vault was reset or replaced on another device.
+    #[error("Sync was reset on another device. Re-enter the sync password to continue.")]
+    SyncStale,
+    #[error("Cancelled.")]
+    Cancelled,
 }
 
 impl AppError {
@@ -42,6 +50,9 @@ impl AppError {
             AppError::Invalid(_) => "invalid",
             AppError::Io(_) => "io",
             AppError::Update(_) => "update",
+            AppError::SyncAuth(_) => "syncAuth",
+            AppError::SyncStale => "syncStale",
+            AppError::Cancelled => "cancelled",
         }
     }
 

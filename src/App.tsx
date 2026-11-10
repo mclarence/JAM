@@ -1,9 +1,12 @@
 import { useEffect, useState } from "react";
 import { useGlobalHotkeys } from "@/hooks/useGlobalHotkeys";
 import { useAutoUpdate } from "@/hooks/useAutoUpdate";
+import { useQuickScan } from "@/store/quickScan";
 import { useSettings } from "@/store/settings";
+import { startSync } from "@/store/sync";
 import { useTemplates } from "@/store/templates";
 import { useUi } from "@/store/ui";
+import { useUpdater } from "@/store/updater";
 import { Sidebar } from "@/components/layout/Sidebar";
 import { TitleBar } from "@/components/layout/TitleBar";
 import { DashboardPage } from "@/pages/DashboardPage";
@@ -12,14 +15,13 @@ import { QuickScanPage } from "@/pages/QuickScanPage";
 import { TemplatesPage } from "@/pages/TemplatesPage";
 import { SettingsPage } from "@/pages/SettingsPage";
 
+const PERSISTED = [useSettings, useTemplates, useQuickScan, useUpdater] as const;
+
 function usePersistedStoresReady() {
-  const check = () => useSettings.persist.hasHydrated() && useTemplates.persist.hasHydrated();
+  const check = () => PERSISTED.every((store) => store.persist.hasHydrated());
   const [ready, setReady] = useState(check);
   useEffect(() => {
-    const unsubs = [
-      useSettings.persist.onFinishHydration(() => setReady(check())),
-      useTemplates.persist.onFinishHydration(() => setReady(check())),
-    ];
+    const unsubs = PERSISTED.map((store) => store.persist.onFinishHydration(() => setReady(check())));
     setReady(check());
     return () => unsubs.forEach((u) => u());
   }, []);
@@ -31,6 +33,11 @@ export default function App() {
   useAutoUpdate();
   const page = useUi((s) => s.page);
   const ready = usePersistedStoresReady();
+
+  useEffect(() => {
+    // Sync compares against the stored settings, so it must not start before they have loaded.
+    if (ready) startSync();
+  }, [ready]);
 
   useEffect(() => {
     const mq = window.matchMedia("(max-width: 1199px)");
