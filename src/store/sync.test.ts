@@ -77,6 +77,7 @@ const { qk } = await import("@/api/queryKeys");
 const { useTemplates } = await import("@/store/templates");
 const { useThemeStore } = await import("@/store/theme");
 const { startSync, syncActions, useSync } = await import("./sync");
+const { ALL_CATEGORIES } = await import("@/lib/sync/categories");
 
 const PASSWORD = "correct horse battery staple";
 const until = async (ok: () => boolean) => {
@@ -107,7 +108,13 @@ describe("sync coordinator", () => {
   });
 
   it("uploads this device's settings when sync is turned on, in the right scopes", async () => {
+    await expect(syncActions.createVault(PASSWORD)).rejects.toThrow("Choose which settings");
+    await syncActions.saveSelection(ALL_CATEGORIES);
     await syncActions.createVault(PASSWORD);
+    expect(useSync.getState().phase).toBe("selectionReview");
+    expect(records("1".repeat(32))).toEqual([]);
+    const review = useSync.getState().selectionReview!;
+    await syncActions.confirmSelectionReview(Object.fromEntries(review.rows.map((r) => [r.rid, "local"])));
     expect(useSync.getState().phase).toBe("ready");
     const uploaded = records("1".repeat(32));
     expect(uploaded).toContain("shared|connection");
@@ -133,21 +140,61 @@ describe("sync coordinator", () => {
     expect(useSync.getState().vaults[0].generationId).toBe("2".repeat(32));
   });
 
-  it("previews the first merge, then lets the user pick a version for conflicts", async () => {
+  it("reviews differences before syncing a new vault and uses explicit choices", async () => {
     await syncActions.unlockVault("2".repeat(32), PASSWORD);
     const s = useSync.getState();
-    expect(s.phase).toBe("preview");
-    expect(s.preview?.conflicts).toEqual(["shared|theme"]);
+    expect(s.phase).toBe("selectionReview");
+    expect(s.selectionReview?.rows.map((r) => r.rid)).toContain("shared|theme");
     expect(useThemeStore.getState().pref).toBe("dark");
 
-    await syncActions.confirmMerge();
+    const choices = Object.fromEntries(s.selectionReview!.rows.map((r) => [r.rid, r.rid === "shared|theme" ? r.options[0].versionId : "local"]));
+    await syncActions.confirmSelectionReview(choices);
     expect(useSync.getState().phase).toBe("ready");
-    expect(useSync.getState().conflicts.map((c) => c.rid)).toEqual(["shared|theme"]);
-
-    await syncActions.resolve("shared|theme", "light");
     expect(useThemeStore.getState().pref).toBe("light");
     expect(useSync.getState().conflicts).toEqual([]);
     expect(useSync.getState().error).toBeNull();
-    expect(records("2".repeat(32)).filter((r) => r === "shared|theme")).toHaveLength(3);
+    expect(records("2".repeat(32)).filter((r) => r === "shared|theme")).toHaveLength(2);
+  });
+
+  it("pauses without uploading or applying when all categories are unchecked", async () => {
+    await syncActions.saveSelection([]);
+    const before = records("2".repeat(32)).length;
+    useThemeStore.getState().setPref("dark");
+    await syncActions.syncNow();
+    expect(useSync.getState().phase).toBe("paused");
+    expect(records("2".repeat(32))).toHaveLength(before);
+    await syncActions.resolve("shared|theme", "light");
+    expect(useThemeStore.getState().pref).toBe("dark");
+    expect(useSync.getState().error).toContain("not enabled");
+  });
+
+  it("requires a fresh review after re-enabling a category and can cancel safely", async () => {
+    await syncActions.saveSelection(["theme"]);
+    expect(useSync.getState().phase).toBe("selectionReview");
+    expect(useSync.getState().selectionReview?.rows.map((r) => r.rid)).toEqual(["shared|theme"]);
+    expect(useThemeStore.getState().pref).toBe("dark");
+    await syncActions.cancelSelectionReview();
+    expect(useSync.getState().phase).toBe("paused");
+    expect(useSync.getState().selected).toEqual([]);
+    expect(useThemeStore.getState().pref).toBe("dark");
+  });
+
+  it("offers a reviewed connection as a suggestion without switching credentials or republishing the local profile", async () => {
+    const gen = "2".repeat(32);
+    remoteBatch(gen, "shared", [{
+      key: "connection", versionId: "9".repeat(32), parents: [], deleted: false,
+      value: { siteUrl: "https://other.atlassian.net", email: "other@example.com", cloudId: "other", workspaceId: "w2" },
+    }]);
+    await syncActions.saveSelection(["connection"]);
+    const review = useSync.getState().selectionReview!;
+    const row = review.rows.find((r) => r.rid === "shared|connection")!;
+    await syncActions.confirmSelectionReview({ [row.rid]: "9".repeat(32) });
+    expect(useSync.getState().suggestedConnection).toEqual({ siteUrl: "https://other.atlassian.net", email: "other@example.com" });
+    expect(queryClient.getQueryData(qk.connection)).toMatchObject({ cloudId: "c", workspaceId: "w" });
+    const before = records(gen).length;
+    await syncActions.syncNow();
+    expect(records(gen)).toHaveLength(before);
+    await syncActions.saveSelection([]);
+    expect(useSync.getState().suggestedConnection).toBeNull();
   });
 });

@@ -124,7 +124,23 @@ Ordering is by ancestry only; device clocks are never compared. History and tomb
 
 ### First merge
 
-Before the first sync on a device, the engine pulls and shows a preview (outgoing count, incoming records, conflicts). Nothing is uploaded or applied until the user confirms; absent local values are not uploaded as deletions over established remote values.
+Before first sync, users confirm this device's category checklist and review differences for the selected categories. Nothing in a newly enabled category is uploaded or applied until review is confirmed. Missing local values versus existing remote values are explicit choices, not automatic deletions. The core engine's first-merge preview remains available for clients without the category-selection UI.
+
+### Device-local category policy
+
+Category choices are local preferences, not wire records. A missing, invalid or unsupported preferences file gates sync until explicit confirmation, including existing enrolled devices upgrading to this feature. An explicitly empty selection pauses settings sync without deleting settings or signing out. The local preference file stores version 1, selected categories, approved active categories, and the generation to which that approval belongs. A different vault generation requires review again; choices themselves survive sign-out/reset.
+
+`fixtures/sync/categories.json` maps record kinds to stable categories. Connection, selection, theme, filters, columns, asset tags, reference display, status colours, rules, deletions and Quick Scan are shared categories. Rule and ruleOrder are grouped, as are scanConfig/scanPreset/scanSound. Desktop columnSizes belongs to columns. Desktop template/defaultTemplate/labelDefaults belong to labels; updater belongs to updater. iOS offers neither labels nor updater, and never downloads desktop-scoped batches.
+
+Apply the policy to projection, management, capture, incoming application, previews/conflicts, suggestions, conflict resolution and every pending-upload path. Exclusion leaves local values and cloud records unchanged; absence from the filtered projection must not generate a deletion. Settings in an existing mixed-category encrypted file can still be downloaded/decrypted into local history. This is application/upload filtering, not a cloud erasure or no-download guarantee.
+
+Pending excluded work is parked durably without blocking enabled work. New captures group batches by category within each existing platform scope. Split legacy mixed pending batches into fresh IDs, retaining record version IDs and parents: never change content under an existing batch ID, including after a lost upload acknowledgement. Other clients can ingest duplicate record versions idempotently.
+
+Newly selected categories stay inactive until review succeeds. Build review from current local values and a fresh cloud-only graph, not parked unpublished local versions. Include local-only, remote-only, deletion and multi-head cases. Each differing record requires an explicit local or synced choice. Verify both local values and cloud heads again before committing; stale previews must be refreshed. Resolve reviewed values with all known heads as parents, supersede obsolete parked work, persist the gated engine state, apply/flush local stores, then durably approve the categories. Interrupted or failed commits remain gated; cancelling does not apply or publish staged choices. Unaffected approved categories retain their policy during review.
+
+Synced connection details remain suggestions, never automatic credential changes. Keeping a local connection snapshot after deferring the connection write avoids immediately republishing a local connection over the user's reviewed synced choice. A verified local Jira connection can still supply workspace identity when connection-details sync is unchecked.
+
+Category changes are serialized with runs and scheduled timers are cancelled. Previously accepted/in-flight uploads cannot be recalled. Old clients without category filtering continue syncing their supported settings; category selection does not change encryption, scopes, batch schema or protocol version.
 
 ### Scheduling
 
@@ -179,3 +195,4 @@ Key parts are joined with `:`, each encoded with `encodeURIComponent` semantics 
 
 - `crypto-vectors.json`: deterministic vault/batch envelopes; implementations must reproduce them byte-for-byte and decrypt them.
 - `engine-scenarios.json`: multi-device desktop/iOS scenarios (merge, conflicts, tombstones, platform isolation, malformed and newer-version batches, crash recovery). Every engine runs them all.
+- `categories.json`: shared TypeScript/Swift record-kind/category mapping, including desktop-only kinds.

@@ -1,0 +1,25 @@
+{
+  "shared": {
+    "connection": "connection",
+    "selection": "selection",
+    "theme": "theme",
+    "filter": "filters",
+    "columns": "columns",
+    "assetTag": "assetTags",
+    "referenceDisplay": "referenceDisplay",
+    "statusColor": "statusColors",
+    "rule": "rules",
+    "ruleOrder": "rules",
+    "deletion": "deletions",
+    "scanConfig": "quickScan",
+    "scanPreset": "quickScan",
+    "scanSound": "quickScan"
+  },
+  "desktop": {
+    "columnSizes": "columns",
+    "template": "labels",
+    "defaultTemplate": "labels",
+    "labelDefaults": "labels",
+    "updater": "updater"
+  }
+}

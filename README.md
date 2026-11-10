@@ -105,6 +105,16 @@ Open **Settings → Sync** and sign in with Google, then choose a sync password 
 | Other computers only | Label templates and default template, label defaults, column widths, update settings |
 | Never | Jira API token (enter it on each device), network/proxy options, the Google sign-in itself |
 
+#### Choose what syncs on each device
+
+Use the **Sync on this device** checkboxes and **Confirm sync choices** before enabling sync. After this update, previously enrolled devices also pause until you confirm their categories. Supported categories start checked, but nothing starts syncing until you confirm and review any differences.
+
+Uncheck a category to stop both incoming changes and outgoing edits on this device. Existing local settings and cloud records stay intact, and other devices keep syncing that category. For example, exclude **Columns** on iOS to keep its own visibility/order while desktop clients continue sharing visibility/order and desktop-only widths. Rules and their order stay together; Quick Scan settings, presets and sound stay together; label templates/defaults are desktop-only.
+
+Save changes to the checklist whenever you want. Newly enabled categories show a review with explicit **Keep this device's version** or **Use synced version** choices, including removals/defaults. Keeping local settings can update other devices. Cancel leaves those categories disabled; interrupted reviews remain gated after restarting. Uncheck everything to pause settings sync without signing out. Choices are local to this installation, retained across sign-out and sync reset, and never included in synced settings or portable backups.
+
+Excluded categories may still be downloaded/decrypted as part of older mixed-category encrypted files, but are never applied or uploaded by this device. Exclusion does not erase previously uploaded data and cannot recall an upload already in progress when you save your choices.
+
 Label templates and other desktop-only features are synced in a desktop-only scope that the iOS app never downloads or changes, so iOS keeps working normally without them. Changes sync automatically a few seconds after you make them and every few minutes while the app is open; **Sync now** runs immediately. The first sync on a device shows a preview before merging. If two devices change the same setting before syncing, you choose which version to keep. A synced connection is only suggested on a new device: you still enter your API token there. The protocol is specified in [docs/sync-protocol.md](docs/sync-protocol.md).
 
 ### Other

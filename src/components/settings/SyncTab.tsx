@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { AlertTriangle, CloudOff, KeyRound, Loader2, LogOut, RefreshCw, RotateCcw } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -6,6 +6,8 @@ import { Input } from "@/components/ui/input";
 import { Card, Label } from "@/components/ui/primitives";
 import { notify } from "@/lib/notify";
 import { describeRecord, summarizeValue } from "@/lib/sync/labels";
+import { ALL_CATEGORIES, SYNC_CATEGORIES, type SyncCategory } from "@/lib/sync/categories";
+import type { SelectionReview } from "@/lib/sync/selection";
 import { syncActions, useSync, type ConflictView } from "@/store/sync";
 
 const MIN_PASSWORD = 8;
@@ -101,7 +103,7 @@ function ChoiceButton({ label, value, disabled, onClick }: { label: string; valu
 function Scope() {
   return (
     <Card className="grid gap-2 p-4 text-sm">
-      <p className="font-medium">What syncs</p>
+      <p className="font-medium">What you can sync</p>
       <ul className="list-disc space-y-1 pl-5 text-muted-foreground">
         <li>
           With all your devices (desktop and iOS): site URL and email, selected schema and object type, theme, saved filters, status
@@ -114,6 +116,78 @@ function Scope() {
         Settings are end-to-end encrypted with your sync password and stored in this app's private Google Drive folder. Google cannot
         read them.
       </p>
+    </Card>
+  );
+}
+
+function CategoryChecklist({ selected, busy }: { selected: SyncCategory[] | null; busy: boolean }) {
+  const [draft, setDraft] = useState<SyncCategory[]>(selected ?? ALL_CATEGORIES);
+  useEffect(() => setDraft(selected ?? ALL_CATEGORIES), [selected]);
+  return (
+    <Card className="grid gap-3 p-4 text-sm">
+      <p className="font-medium">Sync on this device</p>
+      <p className="text-muted-foreground">
+        Checked settings sync in both directions. Unchecked settings stay local and remain unchanged on your other devices.
+        Confirm your choices before sync starts. Clear all to pause without signing out.
+      </p>
+      <div className="flex gap-3">
+        <button type="button" className="underline" disabled={busy} onClick={() => setDraft([...ALL_CATEGORIES])}>Select all</button>
+        <button type="button" className="underline" disabled={busy} onClick={() => setDraft([])}>Clear all</button>
+      </div>
+      {SYNC_CATEGORIES.map((category) => (
+        <label key={category.id} className="flex items-center gap-2">
+          <input type="checkbox" checked={draft.includes(category.id)} disabled={busy} onChange={(e) =>
+            setDraft((current) => e.target.checked ? [...current, category.id] : current.filter((id) => id !== category.id))
+          } />
+          {category.label}
+        </label>
+      ))}
+      <p className="text-xs text-muted-foreground">
+        These choices are saved only on this device. Existing encrypted files can contain several categories, so excluded settings may
+        still be downloaded and decrypted, but will not be applied or uploaded.
+      </p>
+      <div>
+        <Button disabled={busy} onClick={() => void syncActions.saveSelection(draft).catch((e) => notify.error(e, "Could not save sync choices"))}>
+          {selected === null ? "Confirm sync choices" : "Save sync choices"}
+        </Button>
+      </div>
+    </Card>
+  );
+}
+
+function SelectionReviewCard({ review, busy }: { review: SelectionReview; busy: boolean }) {
+  const [choices, setChoices] = useState<Record<string, string>>({});
+  useEffect(() => setChoices({}), [review.fingerprint]);
+  return (
+    <Card className="grid gap-3 p-4 text-sm">
+      <p className="font-medium">Review settings before enabling sync</p>
+      <p>Choose a version for each difference. Keeping this device's version shares it with other devices.
+        Using a synced version changes this device, including restoring defaults for deleted settings.
+        Synced Jira connection details are offered as a suggestion; you must connect manually with your API token.</p>
+      {!review.rows.length && <p>No differences to resolve. Confirm to enable your selected categories.</p>}
+      {review.rows.map((row) => (
+        <fieldset key={row.rid} className="grid gap-2 rounded-md border p-3" disabled={busy}>
+          <legend className="px-1 font-medium">{describeRecord(row.rid, row.local, ...row.options.map((o) => o.value))}</legend>
+          {[{ id: "local", label: "Keep this device's version", value: row.local },
+            ...(row.options.length ? row.options.map((o) => ({ id: o.versionId, label: "Use synced version", value: o.value }))
+              : [{ id: "default", label: "Use default / remove local setting (not present in sync)", value: undefined }]),
+          ].map((option) => (
+            <label key={option.id} className="flex items-start gap-2">
+              <input type="radio" name={`sync-review-${row.rid}`} checked={choices[row.rid] === option.id}
+                onChange={() => setChoices((current) => ({ ...current, [row.rid]: option.id }))} />
+              <span>{option.label}<span className="block break-all font-mono text-xs text-muted-foreground">{summarizeValue(option.value)}</span></span>
+            </label>
+          ))}
+        </fieldset>
+      ))}
+      <div className="flex gap-2">
+        <Button disabled={busy || review.rows.some((row) => !choices[row.rid])}
+          onClick={() => void syncActions.confirmSelectionReview(choices).catch((e) => notify.error(e, "Could not enable selected settings"))}>
+          Confirm and sync selected settings
+        </Button>
+        <Button variant="outline" disabled={busy}
+          onClick={() => void syncActions.cancelSelectionReview().catch((e) => notify.error(e, "Could not cancel review"))}>Cancel</Button>
+      </div>
     </Card>
   );
 }
@@ -134,6 +208,16 @@ export function SyncTab() {
 
   let body: React.ReactNode;
   switch (s.phase) {
+    case "selectionRequired":
+      body = <p className="text-sm">Sync is paused until you confirm which settings this device should sync.</p>;
+      break;
+    case "paused":
+      body = <Card className="grid gap-2 p-4 text-sm">{account}<p>Settings sync is paused: no categories are selected. Your settings and Google sign-in are kept.</p></Card>;
+      break;
+    case "selectionReview":
+      body = s.selectionReview ? <SelectionReviewCard review={s.selectionReview} busy={s.busy} /> :
+        <p className="text-sm">Preparing sync review. If it failed, save your choices again to retry.</p>;
+      break;
     case "loading":
       body = (
         <p className="flex items-center gap-2 text-sm">
@@ -177,7 +261,7 @@ export function SyncTab() {
               Sync was reset on another device. Enter the new sync password to continue.
             </p>
           )}
-          {s.vaults.length ? (
+          {s.selected === null ? <p>Confirm which settings to sync on this device before continuing.</p> : s.vaults.length ? (
             <PasswordForm mode="unlock" submitLabel="Unlock sync" onSubmit={(p) => syncActions.unlockVault(s.vaults[0].generationId, p)} />
           ) : (
             <>
@@ -252,6 +336,7 @@ export function SyncTab() {
   return (
     <div className="grid max-w-2xl gap-6">
       <Scope />
+      {s.phase !== "unavailable" && s.phase !== "loading" && <CategoryChecklist selected={s.selected} busy={s.busy} />}
       {body}
 
       {s.error && (
@@ -275,7 +360,7 @@ export function SyncTab() {
           API Connection with your API token.
         </Card>
       )}
-      {s.phase === "ready" && s.conflicts.length > 0 && (
+      {(s.phase === "ready" || s.phase === "selectionReview") && s.conflicts.length > 0 && (
         <div className="grid gap-3">
           <p className="text-sm font-medium">Choose which version to keep</p>
           {s.conflicts.map((c) => (

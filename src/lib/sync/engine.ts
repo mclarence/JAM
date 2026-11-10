@@ -93,6 +93,8 @@ export interface Adapter {
   flush(): Promise<void>;
   /** Records whose conflicts are resolved automatically in favour of the local value. */
   autoResolveLocal?(rid: string): boolean;
+  /** Optional local-only grouping; the wire format and platform scopes are unchanged. */
+  batchGroup?(rid: string): string;
 }
 
 export interface Ctx {
@@ -187,7 +189,7 @@ export function capture(state: SyncState, projection: Map<string, Json>, adapter
   for (const id of projection.keys()) if (adapter.isManaged(id)) ids.add(id);
   for (const id of Object.keys(state.local)) if (adapter.isManaged(id)) ids.add(id);
 
-  const byScope = new Map<string, WireRecord[]>();
+  const groups = new Map<string, { scope: string; records: WireRecord[] }>();
   for (const id of [...ids].sort()) {
     const [scope, key] = splitRid(id);
     if (!adapter.scopes.includes(scope)) continue;
@@ -198,14 +200,15 @@ export function capture(state: SyncState, projection: Map<string, Json>, adapter
     const version = versionFor(cur, ks.parents);
     (state.graph[id] ??= {})[versionId] = version;
     state.local[id] = stateFor(cur, [versionId]);
-    const list = byScope.get(scope) ?? [];
-    list.push({ key, versionId, ...version });
-    byScope.set(scope, list);
+    const groupKey = `${scope}|${adapter.batchGroup?.(id) ?? ""}`;
+    const group = groups.get(groupKey) ?? { scope, records: [] };
+    group.records.push({ key, versionId, ...version });
+    groups.set(groupKey, group);
   }
 
   let count = 0;
-  for (const scope of [...byScope.keys()].sort()) {
-    const records = byScope.get(scope)!;
+  for (const groupKey of [...groups.keys()].sort()) {
+    const { scope, records } = groups.get(groupKey)!;
     count += records.length;
     let chunk: WireRecord[] = [];
     let size = 0;
@@ -408,7 +411,9 @@ export async function runSync(state: SyncState, adapter: Adapter, transport: Tra
   await save(state);
   if (!state.merged) return result;
 
-  result.uploaded += await pushPending(state, transport, save);
+  partitionPending(state, (id) => adapter.isManaged(id), ctx);
+  await save(state);
+  result.uploaded += await pushPending(state, transport, save, (id) => adapter.isManaged(id));
 
   const projection = adapter.project();
   const { changes, conflicts } = plan(state, projection, adapter);
@@ -422,17 +427,31 @@ export async function runSync(state: SyncState, adapter: Adapter, transport: Tra
     else result.conflicts.push(conflict);
   }
   await save(state);
-  result.uploaded += await pushPending(state, transport, save);
+  result.uploaded += await pushPending(state, transport, save, (id) => adapter.isManaged(id));
   return result;
 }
 
 /** Uploads queued batches in order. Each is removed only after a successful upload (uploads are idempotent by batch ID). */
-export async function pushPending(state: SyncState, transport: Transport, save: (s: SyncState) => Promise<void>): Promise<number> {
+export function partitionPending(state: SyncState, allowed: (rid: string) => boolean, ctx: Ctx) {
+  state.pending = state.pending.flatMap((batch) => {
+    const yes = batch.body.records.filter((r) => allowed(rid(batch.scope, r.key)));
+    const no = batch.body.records.filter((r) => !allowed(rid(batch.scope, r.key)));
+    if (!yes.length || !no.length) return [batch];
+    return [yes, no].map((records) => ({ ...batch, batchId: ctx.newId(), body: { ...batch.body, records } }));
+  });
+}
+
+export async function pushPending(
+  state: SyncState, transport: Transport, save: (s: SyncState) => Promise<void>,
+  allowed: (rid: string) => boolean = () => true,
+): Promise<number> {
   let uploaded = 0;
-  while (state.pending.length) {
-    const batch = state.pending[0];
+  for (;;) {
+    const index = state.pending.findIndex((b) => b.body.records.every((r) => allowed(rid(b.scope, r.key))));
+    if (index < 0) break;
+    const batch = state.pending[index];
     await transport.push(batch);
-    state.pending.shift();
+    state.pending.splice(index, 1);
     if (!state.known.includes(batch.batchId)) state.known.push(batch.batchId);
     uploaded += batch.body.records.length;
     await save(state);
