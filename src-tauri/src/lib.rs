@@ -27,6 +27,7 @@ pub fn run() {
             proxy::proxy_sign_in_finish,
             proxy::proxy_sign_in_cancel,
             files::save_pdf,
+            files::save_csv,
             backup::export_settings,
             backup::import_settings_read,
             backup::import_settings_connection,

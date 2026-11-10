@@ -37,6 +37,16 @@ pub fn save_pdf(path: String, data_b64: String) -> AppResult<()> {
 
 const MAX_JSON_BYTES: u64 = 5 * 1024 * 1024;
 
+#[tauri::command]
+pub fn save_csv(path: String, content: String) -> AppResult<()> {
+    let path = PathBuf::from(path);
+    if !path.extension().and_then(|e| e.to_str()).is_some_and(|e| e.eq_ignore_ascii_case("csv")) {
+        return Err(AppError::Invalid("Only .csv files can be written".into()));
+    }
+    std::fs::write(path, content.as_bytes())?;
+    Ok(())
+}
+
 pub(crate) fn json_path(path: String) -> AppResult<PathBuf> {
     let path = PathBuf::from(path);
     let is_json = path
@@ -67,4 +77,43 @@ pub fn open_pdf(file_name: String, data_b64: String) -> AppResult<()> {
     let path = dir.join(sanitize_file_name(&file_name));
     std::fs::write(&path, decode(&data_b64)?)?;
     tauri_plugin_opener::open_path(&path, None::<&str>).map_err(|e| AppError::Io(e.to_string()))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn csv_test_path() -> PathBuf {
+        std::env::temp_dir().join(format!(
+            "jam-csv-test-{}-{}.CSV",
+            std::process::id(),
+            std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_nanos()
+        ))
+    }
+
+    #[test]
+    fn csv_writes_utf8_content_with_uppercase_extension() {
+        let path = csv_test_path();
+        let content = "\u{feff}Name\r\n\"Café, \"\"Laptop\"\"\nsecond line\"\r\n";
+        save_csv(path.to_str().unwrap().into(), content.into()).unwrap();
+        let actual = std::fs::read(&path).unwrap();
+        std::fs::remove_file(&path).unwrap();
+        assert_eq!(actual, content.as_bytes());
+    }
+
+    #[test]
+    fn csv_rejects_non_csv_paths_without_writing() {
+        let path = csv_test_path().with_extension("json");
+        assert!(save_csv(path.to_str().unwrap().into(), "data".into()).is_err());
+        assert!(!path.exists());
+    }
+
+    #[test]
+    fn csv_surfaces_io_failure() {
+        let path = csv_test_path().join("export.csv");
+        assert!(matches!(
+            save_csv(path.to_str().unwrap().into(), "data".into()),
+            Err(AppError::Io(_))
+        ));
+    }
 }

@@ -105,6 +105,7 @@ export const backupApi = {
 };
 
 export const fileApi = {
+  saveCsv: (path: string, content: string) => call<void>("save_csv", { path, content }),
   savePdf: (path: string, dataB64: string) => call<void>("save_pdf", { path, dataB64 }),
   openPdf: (fileName: string, dataB64: string) => call<void>("open_pdf", { fileName, dataB64 }),
 };

@@ -37,6 +37,15 @@ A cross-platform desktop app (Windows, macOS, Linux) for managing IT assets stor
 ### Dashboard
 Total object count plus a per-status breakdown for the selected object type. Clicking a status jumps to the grid filtered to that status.
 
+### Asset CSV export
+Use **Export** above the grid or **Export selected** in the selection bar. Choose selected assets or **all matching results across every page**, then visible columns in table order or all available attributes in metadata order (including columns you hid, but excluding Jira-hidden attributes). Selected assets are the default when available; visible columns are the default. No extra Key/Label columns are added.
+
+Export reads fresh asset details without changing the table's selection or loaded pages. References, statuses and users use readable names, while numbers, booleans and ISO dates retain API values. Multiple values share one comma-separated cell. CSV files are UTF-8 with Unicode and multiline support.
+
+Progress and Cancel are available with no fixed row cap. The native save dialog opens only when all requested assets have been read; errors can be retried and no partial file is offered. Changing the query, object type or connection cancels the export. Large exports depend on available memory. This is not a server-side point-in-time snapshot: assets may change while exporting. Export requires the desktop app, like the existing Jira connection.
+
+**Spreadsheet warning:** CSV text is preserved exactly, including values starting with `=`, `+`, `-` or `@`. Spreadsheet applications may interpret these as formulas. Only open trusted exported data.
+
 ### Quick Scan
 Built for handheld barcode/QR scanners. Scan or type a value and press Enter to look up the matching asset and apply a pre-configured set of changes immediately.
 - Choose which attribute to match against (Key or any text attribute).

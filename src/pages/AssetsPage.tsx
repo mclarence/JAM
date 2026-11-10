@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import type { ColumnSizingState, RowSelectionState, SortingState, VisibilityState } from "@tanstack/react-table";
-import { Database, Loader2, PlugZap, Plus, RefreshCw } from "lucide-react";
+import { Database, Download, Loader2, PlugZap, Plus, RefreshCw } from "lucide-react";
 import {
   useAssetsInfinite,
   useAttributes,
@@ -19,6 +19,7 @@ import { ColumnDrawer } from "@/components/assets/ColumnDrawer";
 import { CreateAssetDialog } from "@/components/assets/CreateAssetDialog";
 import { DetailDrawer } from "@/components/assets/DetailDrawer";
 import { FilterBar } from "@/components/assets/FilterBar";
+import { ExportAssetsDialog } from "@/components/assets/ExportAssetsDialog";
 import { PrintActionBar } from "@/components/assets/PrintActionBar";
 import { EmptyState, PageHeader } from "@/components/layout/PageHeader";
 import { Button } from "@/components/ui/button";
@@ -55,6 +56,7 @@ export function AssetsPage() {
   const [selectingAll, setSelectingAll] = useState(false);
   const [createOpen, setCreateOpen] = useState(false);
   const [batchOpen, setBatchOpen] = useState(false);
+  const [exportOpen, setExportOpen] = useState(false);
   const debouncedSearch = useDebounce(search, 300);
 
   const sortAttr = sorting[0] ? attributes.find((a) => a.id === sorting[0].id) : undefined;
@@ -116,6 +118,15 @@ export function AssetsPage() {
   };
 
   const selectedObjects = useMemo(() => rows.filter((r) => rowSelection[r.id]), [rows, rowSelection]);
+  const selectedExportIds = useMemo(() => {
+    const loaded = selectedObjects.map((object) => object.id);
+    const loadedIds = new Set(loaded);
+    return [...loaded, ...Object.keys(rowSelection).filter((id) => rowSelection[id] && !loadedIds.has(id)).sort()];
+  }, [selectedObjects, rowSelection]);
+  const exportContext = JSON.stringify([query?.full, search, searchField, rawAql, schemaId, objectTypeId, connection.data]);
+  useEffect(() => setExportOpen(false), [exportContext]);
+  const exportReady = !!query && !!connection.data && attrsQuery.isSuccess && !objects.isPending &&
+    !objects.isPlaceholderData && search === debouncedSearch && !selectingAll;
   const findLoaded = useCallback((id: string) => rows.find((r) => r.id === id), [rows]);
 
   const selectAllMatching = async () => {
@@ -181,6 +192,9 @@ export function AssetsPage() {
           <>
             <Button size="sm" onClick={() => setCreateOpen(true)}>
               <Plus /> Add
+            </Button>
+            <Button variant="outline" size="sm" disabled={!exportReady} onClick={() => setExportOpen(true)}>
+              <Download /> Export
             </Button>
             <ColumnDrawer
               attributes={orderedAttributes}
@@ -252,7 +266,23 @@ export function AssetsPage() {
         selectingAll={selectingAll}
         onClear={() => setRowSelection({})}
         onBatchEdit={() => setBatchOpen(true)}
+        onExport={() => setExportOpen(true)}
+        exportDisabled={!exportReady}
       />
+
+      {exportOpen && exportReady && connection.data && query && (
+        <ExportAssetsDialog
+          key={exportContext}
+          aql={query.full}
+          typeId={objectTypeId}
+          typeName={typeName}
+          connection={connection.data}
+          selectedIds={selectedExportIds}
+          visibleColumns={orderedAttributes.filter((attr) => !hidden.has(attr.id))}
+          allColumns={attributes}
+          onClose={() => setExportOpen(false)}
+        />
+      )}
 
       <BatchUpdateDialog
         open={batchOpen}
