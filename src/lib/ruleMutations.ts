@@ -112,7 +112,10 @@ async function verifyReferences(rules: Rule[], attributes: ObjectTypeAttribute[]
       (condition.operator === "equals" || condition.operator === "notEquals") && condition.value
         ? [{ attributeId: condition.attributeId, value: condition.value }] : [],
     );
-    for (const item of [...conditionValues, ...rule.actions]) {
+    const actionValues = rule.actions.flatMap((action) =>
+      action.mode === "clear" ? [] : [{ attributeId: action.attributeId, value: action.value }],
+    );
+    for (const item of [...conditionValues, ...actionValues]) {
       const attr = attributes.find((candidate) => candidate.id === item.attributeId);
       if (attr?.type !== AttrType.ObjectReference || !item.value.referenceId) continue;
       let reference = verified.get(item.value.referenceId);
@@ -272,6 +275,9 @@ export function plannedChangeDescriptions(prepared: PreparedRuleMutation): strin
   return prepared.plan.payload.map((item) => {
     const action = prepared.plan.applied.find((candidate) => candidate.attributeId === item.objectTypeAttributeId);
     const name = prepared.attributes.find((attribute) => attribute.id === item.objectTypeAttributeId)?.name ?? item.objectTypeAttributeId;
-    return action ? `${name} → ${action.value.display || action.value.raw} (rule: ${action.ruleName})` : manual.get(item.objectTypeAttributeId) ?? name;
+    if (!action) return manual.get(item.objectTypeAttributeId) ?? name;
+    return action.mode === "clear"
+      ? `${name} cleared (rule: ${action.ruleName})`
+      : `${name} → ${action.value.display || action.value.raw} (rule: ${action.ruleName})`;
   });
 }

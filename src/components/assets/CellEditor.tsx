@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 import type { ObjectAttributeValue, ObjectTypeAttribute, StatusType } from "@/api/types";
 import { Input, Textarea } from "@/components/ui/input";
 import { Popover, PopoverAnchor, PopoverContent } from "@/components/ui/overlays";
@@ -15,6 +15,7 @@ export interface CellEditorProps {
   statuses: StatusType[];
   onCommit: (value: string, optimistic: ObjectAttributeValue[]) => void;
   onCancel: () => void;
+  bulk?: boolean;
 }
 
 export function toLocalDateTime(iso: string) {
@@ -25,13 +26,13 @@ export function toLocalDateTime(iso: string) {
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
 }
 
-export function CellEditor({ attr, values, statuses, onCommit, onCancel }: CellEditorProps) {
+export function CellEditor({ attr, values, statuses, onCommit, onCancel, bulk = false }: CellEditorProps) {
   const kind = editorKind(attr);
   const initial = editorInitialValue(attr, values);
   const required = (attr.minimumCardinality ?? 0) > 0;
 
   const commitPlain = (value: string, display = value) => {
-    if (value === initial) return onCancel();
+    if (!bulk && value === initial) return onCancel();
     onCommit(value, value === "" ? [] : [{ value, displayValue: display }]);
   };
 
@@ -42,6 +43,7 @@ export function CellEditor({ attr, values, statuses, onCommit, onCancel }: CellE
         : statuses;
       return (
         <ChoiceEditor
+          bulk={bulk}
           initial={initial}
           required={required}
           options={allowed.map((s) => ({ value: s.id, label: <StatusBadge name={s.name} category={s.category} /> }))}
@@ -57,6 +59,7 @@ export function CellEditor({ attr, values, statuses, onCommit, onCancel }: CellE
     case "select":
       return (
         <ChoiceEditor
+          bulk={bulk}
           initial={initial}
           required={required}
           options={selectOptions(attr).map((o) => ({ value: o, label: o }))}
@@ -67,6 +70,7 @@ export function CellEditor({ attr, values, statuses, onCommit, onCancel }: CellE
     case "boolean":
       return (
         <ChoiceEditor
+          bulk={bulk}
           initial={initial}
           required={required}
           options={[
@@ -86,7 +90,7 @@ export function CellEditor({ attr, values, statuses, onCommit, onCancel }: CellE
               attr={attr}
               onClear={required ? undefined : () => commitPlain("")}
               onPick={(r) =>
-                r.objectKey === initial
+                !bulk && r.objectKey === initial
                   ? onCancel()
                   : onCommit(r.objectKey, [
                       { value: r.objectKey, displayValue: r.label, referencedObject: { ...r } },
@@ -136,10 +140,10 @@ function TextEditor({
   step?: string;
 }) {
   const [value, setValue] = useState(initial);
-  const [done, setDone] = useState(false);
+  const done = useRef(false);
   const finish = (commit: boolean) => {
-    if (done) return;
-    setDone(true);
+    if (done.current) return;
+    done.current = true;
     if (commit) onCommit(value.trim());
     else onCancel();
   };
@@ -186,20 +190,22 @@ function ChoiceEditor({
   options,
   onChoose,
   onCancel,
+  bulk = false,
 }: {
   initial: string;
   required: boolean;
   options: { value: string; label: React.ReactNode }[];
   onChoose: (value: string) => void;
   onCancel: () => void;
+  bulk?: boolean;
 }) {
   return (
     <Select
       defaultOpen
-      value={initial || undefined}
+      value={bulk ? undefined : initial || undefined}
       onValueChange={(v) => {
         const next = v === NONE ? "" : v;
-        if (next === initial) onCancel();
+        if (!bulk && next === initial) onCancel();
         else onChoose(next);
       }}
       onOpenChange={(open) => {

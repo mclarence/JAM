@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, type ReactNode } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { DndContext, PointerSensor, useDraggable, useDroppable, useSensor, useSensors, type DragEndEvent } from "@dnd-kit/core";
 import {
   flexRender,
@@ -17,7 +17,10 @@ import type { AssetObject, ObjectTypeAttribute, StatusType } from "@/api/types";
 import { useUpdateAttribute } from "@/api/queries";
 import { Checkbox } from "@/components/ui/primitives";
 import { editorKind, getAttrValues } from "@/lib/attributes";
-import { cn } from "@/lib/utils";
+import { cn, modKey } from "@/lib/utils";
+import { notify } from "@/lib/notify";
+import { useCellSelection } from "@/hooks/useCellSelection";
+import type { InlineBulkInput } from "@/hooks/useInlineBulkUpdate";
 import { useUi } from "@/store/ui";
 import { AttributeValue } from "./AttributeValue";
 import { CellEditor } from "./CellEditor";
@@ -64,6 +67,9 @@ interface Props {
   hasNextPage: boolean;
   isFetchingNextPage: boolean;
   fetchNextPage: () => void;
+  selectionContext: string;
+  bulkBusy: boolean;
+  onBulkCommit: (input: InlineBulkInput) => void;
 }
 
 export function AssetGrid(props: Props) {
@@ -72,6 +78,22 @@ export function AssetGrid(props: Props) {
   const staleAssets = useUi((state) => state.staleAssets);
   const update = useUpdateAttribute();
   const scrollRef = useRef<HTMLDivElement>(null);
+  const [bulkEdit, setBulkEdit] = useState<{ objects: AssetObject[]; attrId: string; anchorId: string; context: string } | null>(null);
+  const rowIds = useMemo(() => rows.map((row) => row.id), [rows]);
+  const rowsById = useMemo(() => new Map(rows.map((row) => [row.id, row])), [rows]);
+  const editableIds = useMemo(() => attributes
+    .filter((attr) => props.columnVisibility[attr.id] !== false && editorKind(attr) !== "readonly")
+    .map((attr) => attr.id), [attributes, props.columnVisibility]);
+  const cells = useCellSelection({
+    scrollRef, rowIds, attributeIds: editableIds, context: props.selectionContext,
+    disabled: props.bulkBusy || update.isPending || !!editing, rowHeight: ROW_HEIGHT,
+    onClear: () => {
+      setBulkEdit(null);
+      setEditing(null);
+    },
+  });
+  const highlightedIds = useMemo(() => new Set(cells.selection?.ids), [cells.selection]);
+  useEffect(() => () => setEditing(null), [setEditing]);
   // The distance threshold keeps plain header clicks working as sort toggles.
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 6 } }));
   const onDragEnd = ({ active, over }: DragEndEvent) => {
@@ -155,6 +177,12 @@ export function AssetGrid(props: Props) {
   });
   const virtualItems = virtualizer.getVirtualItems();
   const lastIndex = virtualItems.at(-1)?.index ?? 0;
+  useEffect(() => {
+    if (editing && !virtualItems.some((item) => tableRows[item.index]?.id === editing.objectId)) {
+      setEditing(null);
+      setBulkEdit(null);
+    }
+  }, [editing, virtualItems, tableRows, setEditing]);
 
   useEffect(() => {
     if (hasNextPage && !isFetchingNextPage && lastIndex >= tableRows.length - 20) fetchNextPage();
@@ -163,7 +191,17 @@ export function AssetGrid(props: Props) {
   const totalWidth = table.getTotalSize();
 
   return (
-    <div ref={scrollRef} className="relative min-h-0 flex-1 overflow-auto rounded-lg border bg-background">
+    <>
+    <div data-cell-selection-controls className="mb-2 flex items-center gap-3 text-xs text-muted-foreground">
+      {cells.selection ? (
+        <>
+          <span role="status">{cells.selection.ids.length} cells highlighted in {attributes.find((attr) => attr.id === cells.selection?.attrId)?.name}. Double-click a highlighted cell to edit.</span>
+          <button type="button" className="underline" disabled={props.bulkBusy || !!editing} onClick={cells.clear}>Clear highlights</button>
+        </>
+      ) : <span>Hold {modKey} and drag cells in one column to highlight, then double-click to edit them together.</span>}
+    </div>
+    <div ref={scrollRef} className="relative min-h-0 flex-1 overflow-auto rounded-lg border bg-background"
+      onContextMenu={(event) => { if (cells.dragging()) event.preventDefault(); }}>
       <div style={{ width: totalWidth, minWidth: "100%" }}>
         {/* The sticky header sits at the top edge, so vertical auto-scroll would jump the grid to the top. */}
         <DndContext sensors={sensors} onDragEnd={onDragEnd} autoScroll={{ threshold: { x: 0.2, y: 0 } }}>
@@ -223,18 +261,40 @@ export function AssetGrid(props: Props) {
                   const attr = (cell.column.columnDef.meta as { attr?: ObjectTypeAttribute } | undefined)?.attr;
                   const isEditing = !!attr && editing?.objectId === row.id && editing.attrId === attr.id;
                   const editable = !!attr && !staleAssets[row.id] && editorKind(attr) !== "readonly";
+                  const highlighted = !!attr && cells.selection?.attrId === attr.id && highlightedIds.has(row.id);
                   return (
                     <div
                       key={cell.id}
+                      data-asset-cell={row.id}
+                      data-attribute={attr?.id}
+                      data-highlighted={highlighted || undefined}
+                      aria-label={highlighted ? `${attr?.name}, ${row.original.objectKey}, highlighted` : undefined}
                       style={{ width: cell.column.getSize() }}
                       className={cn(
                         "relative flex shrink-0 items-center overflow-hidden border-r px-3 last:border-r-0",
                         isEditing && "overflow-visible p-0",
                         editable && "cursor-cell",
+                        highlighted && "bg-primary/15 ring-1 ring-inset ring-primary/60 select-none",
                       )}
+                      onPointerDown={(event) => {
+                        if (editable && attr) cells.begin(event, attr.id, row.id);
+                      }}
                       onDoubleClick={() => {
                         if (!attr) openDetail(row.id);
-                        else if (editable) setEditing({ objectId: row.id, attrId: attr.id });
+                        else if (editable && !props.bulkBusy && !update.isPending) {
+                          if (highlighted && cells.selection) {
+                            const targets = cells.selection.ids.map((id) => rowsById.get(id));
+                            if (targets.some((object) => !object || staleAssets[object.id])) {
+                              notify.error("Refresh stale or missing assets before editing the highlighted cells.");
+                              return;
+                            }
+                            setBulkEdit({
+                              objects: targets.filter((object): object is AssetObject => !!object),
+                              attrId: attr.id, anchorId: row.id, context: props.selectionContext,
+                            });
+                          } else setBulkEdit(null);
+                          setEditing({ objectId: row.id, attrId: attr.id });
+                        }
                       }}
                       title={editable || !attr ? undefined : "Read-only attribute"}
                     >
@@ -244,10 +304,20 @@ export function AssetGrid(props: Props) {
                             attr={attr}
                             values={getAttrValues(row.original, attr.id)}
                             statuses={statuses}
-                            onCancel={() => setEditing(null)}
+                            bulk={!!bulkEdit}
+                            onCancel={() => { setEditing(null); setBulkEdit(null); }}
                             onCommit={(value, optimistic) => {
                               setEditing(null);
-                              update.mutate({ object: row.original, attr, value, optimistic });
+                              if (bulkEdit) {
+                                if (bulkEdit.context !== props.selectionContext || bulkEdit.attrId !== attr.id ||
+                                  bulkEdit.anchorId !== row.id) {
+                                  notify.error("The table changed. Highlight the cells again before updating.");
+                                  setBulkEdit(null);
+                                  return;
+                                }
+                                props.onBulkCommit({ objects: bulkEdit.objects, attr, value, optimistic });
+                                setBulkEdit(null);
+                              } else update.mutate({ object: row.original, attr, value, optimistic });
                             }}
                           />
                         </div>
@@ -269,5 +339,6 @@ export function AssetGrid(props: Props) {
         )}
       </div>
     </div>
+    </>
   );
 }

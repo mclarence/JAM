@@ -25,6 +25,7 @@ import { EmptyState, PageHeader } from "@/components/layout/PageHeader";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/primitives";
 import { useDebounce } from "@/hooks/useDebounce";
+import { useInlineBulkUpdate } from "@/hooks/useInlineBulkUpdate";
 import { buildAssetsQuery } from "@/lib/aql";
 import { sortAttributes } from "@/lib/attributes";
 import { notify } from "@/lib/notify";
@@ -124,6 +125,8 @@ export function AssetsPage() {
     return [...loaded, ...Object.keys(rowSelection).filter((id) => rowSelection[id] && !loadedIds.has(id)).sort()];
   }, [selectedObjects, rowSelection]);
   const exportContext = JSON.stringify([query?.full, search, searchField, rawAql, schemaId, objectTypeId, connection.data]);
+  const selectionContext = JSON.stringify([exportContext, sorting]);
+  const bulk = useInlineBulkUpdate(selectionContext, attributes);
   useEffect(() => setExportOpen(false), [exportContext]);
   const exportReady = !!query && !!connection.data && attrsQuery.isSuccess && !objects.isPending &&
     !objects.isPlaceholderData && search === debouncedSearch && !selectingAll;
@@ -226,6 +229,30 @@ export function AssetsPage() {
         </div>
       )}
       <FilterBar attributes={attributes} error={queryError} />
+      {bulk.save && (
+        <div data-cell-selection-controls className="mb-3 grid gap-2 rounded-md border p-3 text-sm" aria-busy={bulk.busy}>
+          <div className="flex items-center justify-between gap-3">
+            <p role="status">
+              <strong>{bulk.save.label}</strong>: {bulk.busy
+                ? `Updating ${bulk.save.done} of ${bulk.save.total} assets…`
+                : bulk.save.error ? "Update interrupted; refresh assets before trying again."
+                : `${bulk.save.updated} updated, ${bulk.save.unchanged} unchanged, ${bulk.save.failures.length} failed.`}
+            </p>
+            {!bulk.busy && (
+              <div className="flex gap-2">
+                {bulk.save.failures.length > 0 && <Button size="sm" disabled={!bulk.canRetry} onClick={bulk.retry}>Retry failed</Button>}
+                <Button size="sm" variant="outline" onClick={bulk.dismiss}>Dismiss</Button>
+              </div>
+            )}
+          </div>
+          {bulk.save.error && <p role="alert" className="text-destructive">{bulk.save.error}. Refresh assets before trying again.</p>}
+          {bulk.save.failures.length > 0 && (
+            <ul className="max-h-40 overflow-auto text-destructive" aria-label="Failed asset updates">
+              {bulk.save.failures.map(({ job, error }) => <li key={job.object.id}>{job.object.objectKey}: {error}</li>)}
+            </ul>
+          )}
+        </div>
+      )}
 
       {objects.isLoading || attrsQuery.isLoading ? (
         <div className="grid gap-2">
@@ -239,6 +266,9 @@ export function AssetsPage() {
         </EmptyState>
       ) : (
         <AssetGrid
+          selectionContext={selectionContext}
+          bulkBusy={bulk.busy}
+          onBulkCommit={bulk.start}
           rows={rows}
           attributes={orderedAttributes}
           statuses={statuses.data ?? []}

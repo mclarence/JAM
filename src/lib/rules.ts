@@ -18,11 +18,14 @@ export interface RuleCondition {
   value?: RuleValue;
 }
 
-export interface RuleAction {
+type RuleActionEffect =
+  | { mode?: "set"; value: RuleValue }
+  | { mode: "clear"; value?: never };
+
+export type RuleAction = {
   id: string;
   attributeId: string;
-  value: RuleValue;
-}
+} & RuleActionEffect;
 
 export interface Rule {
   id: string;
@@ -45,12 +48,11 @@ export interface RuleScope {
   objectTypeId: string;
 }
 
-export interface AppliedRuleAction {
+export type AppliedRuleAction = {
   ruleId: string;
   ruleName: string;
   attributeId: string;
-  value: RuleValue;
-}
+} & RuleActionEffect;
 
 export interface RulePlan {
   payload: ObjectAttributeIn[];
@@ -112,11 +114,17 @@ export function parseRules(value: unknown): Rule[] {
         ...(condition.value === undefined ? {} : { value: readValue(condition.value) }),
       };
     });
-    const actions = item.actions.map((action) => {
+    const actions = item.actions.map((action): RuleAction => {
       if (!isRecord(action) || !nonempty(action.id) || !nonempty(action.attributeId)) {
         throw new Error(`Rule "${item.name}" has a malformed action.`);
       }
-      return { id: action.id, attributeId: action.attributeId, value: readValue(action.value) };
+      const mode = action.mode === undefined ? "set" : action.mode;
+      if (mode === "clear") {
+        if (action.value !== undefined) throw new Error(`Rule "${item.name}" has a clear action with a value.`);
+        return { id: action.id, attributeId: action.attributeId, mode };
+      }
+      if (mode !== "set") throw new Error(`Rule "${item.name}" has an invalid action mode.`);
+      return { id: action.id, attributeId: action.attributeId, mode, value: readValue(action.value) };
     });
     const rule: Rule = {
       id: item.id,
@@ -221,8 +229,15 @@ export function validateRule(rule: Rule, attributes: ObjectTypeAttribute[], stat
     const attribute = attributes.find((candidate) => candidate.id === action.attributeId);
     if (!attribute) return `Action attribute ${action.attributeId} no longer exists.`;
     if (!ruleActionAttributes([attribute]).length) return `"${attribute.name}" is no longer an editable single-valued attribute.`;
-    const error = validateValue(attribute, action.value, statuses);
-    if (error) return error;
+    if (action.mode === "clear") {
+      if (action.value !== undefined) return `The clear action for "${attribute.name}" must not contain a value.`;
+      if ((attribute.minimumCardinality ?? 0) > 0) return `"${attribute.name}" is required and cannot be cleared.`;
+    } else {
+      if (action.mode !== undefined && action.mode !== "set") return `The action for "${attribute.name}" has an invalid mode.`;
+      if (!action.value) return `Choose a value for "${attribute.name}".`;
+      const error = validateValue(attribute, action.value, statuses);
+      if (error) return error;
+    }
   }
   return null;
 }
@@ -340,19 +355,27 @@ export function planRules(input: {
     });
     if (!(rule.match === "any" ? results.some(Boolean) : results.every(Boolean))) continue;
     for (const action of rule.actions) {
-      payload.set(action.attributeId, { objectTypeAttributeId: action.attributeId, objectAttributeValues: [{ value: action.value.raw }] });
-      applied.set(action.attributeId, { ruleId: rule.id, ruleName: rule.name, attributeId: action.attributeId, value: action.value });
+      payload.set(action.attributeId, {
+        objectTypeAttributeId: action.attributeId,
+        objectAttributeValues: action.mode === "clear" ? [] : [{ value: action.value.raw }],
+      });
+      const source = { ruleId: rule.id, ruleName: rule.name, attributeId: action.attributeId };
+      applied.set(action.attributeId, action.mode === "clear"
+        ? { ...source, mode: "clear" }
+        : { ...source, mode: "set", value: action.value });
     }
   }
 
   const finalPayload = [...payload.values()].filter((change) => {
     const attribute = attrs.get(change.objectTypeAttributeId)!;
+    if (input.operation === "create" && applied.get(change.objectTypeAttributeId)?.mode === "clear") return true;
     return !sameValues(
       attribute,
       original.get(change.objectTypeAttributeId) ?? [],
       change.objectAttributeValues.map((value) => {
         const action = applied.get(change.objectTypeAttributeId);
-        return action ? { raw: value.value, aliases: [value.value, ...(action.value.referenceId ? [action.value.referenceId] : [])] } : proposedValue(value.value);
+        const referenceId = action?.value?.referenceId;
+        return action ? { raw: value.value, aliases: [value.value, ...(referenceId ? [referenceId] : [])] } : proposedValue(value.value);
       }),
     );
   });

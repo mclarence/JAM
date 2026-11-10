@@ -3,18 +3,17 @@ import { useQueryClient } from "@tanstack/react-query";
 import { Loader2, Plus } from "lucide-react";
 import type { AssetObject, ObjectTypeAttribute, StatusType } from "@/api/types";
 import { useConnection } from "@/api/queries";
-import { applyMutationResult, captureMutationContext, refreshLockedAsset, refreshMutationQueries } from "@/api/mutationCache";
+import { runCachedBatch } from "@/api/batchMutation";
 import { ScanActionRow } from "@/components/quickscan/ScanActionRow";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog";
 import { editorKind } from "@/lib/attributes";
-import { runBatch, type BatchFailure, type BatchJob } from "@/lib/batchUpdate";
+import type { BatchFailure, BatchJob } from "@/lib/batchUpdate";
 import { notify } from "@/lib/notify";
 import { actionAttributes, planChanges } from "@/lib/quickScan";
 import { applicableRules } from "@/lib/rules";
 import type { ScanAction } from "@/store/quickScan";
 import { useSettings } from "@/store/settings";
-import { useUi } from "@/store/ui";
 
 const LARGE_BATCH = 100;
 
@@ -89,20 +88,10 @@ function BatchForm({
     setPhase("running");
     onBusyChange(true);
     setProgress({ done: 0, total: list.length });
-    const isCurrent = captureMutationContext(qc);
-    const result = await runBatch(list, (done) => setProgress({ done, total: list.length }), {
-      rules, attributes, actions, connection: connection ?? undefined, isCurrent,
-      onResult: (item) => applyMutationResult(qc, item),
-      onUnconfirmed: async (id) => { if (isCurrent()) await refreshLockedAsset(qc, id); },
+    const result = await runCachedBatch(qc, list, (done) => setProgress({ done, total: list.length }), {
+      rules, attributes, actions, connection: connection ?? undefined,
     });
     onBusyChange(false);
-    for (const item of result.results) {
-      if (item.publicationWarning) {
-        useUi.getState().markAssetStale(item.objectId, item.publicationWarning);
-        notify.error(item.publicationWarning);
-      }
-    }
-    await refreshMutationQueries(qc, result.results);
 
     const totalUpdated = updated + result.updated;
     setUpdated(totalUpdated);

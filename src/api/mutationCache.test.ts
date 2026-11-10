@@ -76,6 +76,25 @@ describe("mutation cache reconciliation", () => {
     expect(reconcileAssetObject(qc, object("inactive"))).toEqual(newer);
   });
 
+  it("removes a cleared attribute from observed rows and details even when canonical data omits it", () => {
+    const saved = { ...object("active", "2025-01-02T00:00:00Z"), attributes: [object("active").attributes[0]] };
+    const rows = new QueryObserver<InfiniteData<AqlResult>>(qc, { queryKey: listKey, enabled: false });
+    const details = new QueryObserver<AssetObject>(qc, { queryKey: qk.object("1"), enabled: false });
+    const observedRows: (string | undefined)[] = [];
+    const observedDetails: (string | undefined)[] = [];
+    const unsubscribeRows = rows.subscribe((value) => observedRows.push(status(value.data?.pages[0].values[0])));
+    const unsubscribeDetails = details.subscribe((value) => observedDetails.push(status(value.data)));
+    applyMutationResult(qc, result(saved));
+    expect(observedRows.at(-1)).toBeUndefined();
+    expect(observedDetails.at(-1)).toBeUndefined();
+    expect(qc.getQueryData(qk.object("1"))).toEqual(saved);
+    expect(qc.getQueryData<InfiniteData<AqlResult>>(listKey)?.pages[0].values[0]).toEqual(saved);
+    expect(reconcileAssetPage(qc, page([object("inactive")])).values).toEqual([saved]);
+    expect(reconcileAssetObject(qc, object("inactive"))).toEqual(saved);
+    unsubscribeRows();
+    unsubscribeDetails();
+  });
+
   it("does not restore an older save when a delayed list refresh overlaps a newer save", async () => {
     let finish!: () => void;
     const delayed = new Promise<void>((resolve) => { finish = resolve; });

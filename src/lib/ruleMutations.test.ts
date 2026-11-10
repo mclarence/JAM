@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { assetsApi } from "@/api/assets";
 import { connectionApi } from "@/api/client";
 import { AttrType, type AssetObject, type ConnectionInfo, type ObjectTypeAttribute, type StatusType } from "@/api/types";
-import { createPrepared, prepareCreate, prepareUpdate, updatePrepared } from "./ruleMutations";
+import { createPrepared, plannedChangeDescriptions, prepareCreate, prepareUpdate, updatePrepared } from "./ruleMutations";
 import type { Rule, RuleOperation } from "./rules";
 
 const connection: ConnectionInfo = { cloudId: "cloud", workspaceId: "workspace", siteUrl: "https://example.atlassian.net", email: "user@example.test" };
@@ -23,6 +23,8 @@ const rule: Rule = {
   conditions: [{ id: "condition", attributeId: "room", operator: "isSet" }],
   actions: [{ id: "action", attributeId: "status", value: { raw: "active", display: "Active" } }],
 };
+const clearRule: Rule = { ...rule, actions: [{ id: "clear", attributeId: "status", mode: "clear" }] };
+const populated = { ...baseline, attributes: [{ objectTypeAttributeId: "status", objectAttributeValues: [{ status: statuses[0] }] }] };
 
 function setup() {
   vi.spyOn(connectionApi, "get").mockResolvedValue(connection);
@@ -94,12 +96,12 @@ describe("rule-aware mutations", () => {
     expect(write).not.toHaveBeenCalled();
   });
 
-  it("reports a refresh failure separately from the successful write", async () => {
+  it.each([rule, clearRule])("reports a refresh failure separately from a successful $actions.0.mode write", async (config) => {
     setup();
-    vi.spyOn(assetsApi, "getObject").mockResolvedValueOnce(baseline).mockRejectedValueOnce(new Error("offline"));
+    vi.spyOn(assetsApi, "getObject").mockResolvedValueOnce(populated).mockRejectedValueOnce(new Error("offline"));
     const write = vi.spyOn(assetsApi, "updateObject").mockResolvedValue(baseline);
     const prepared = await prepareUpdate({
-      object: baseline, operation: "edit", rules: [rule], attributes, connection,
+      object: baseline, operation: "edit", rules: [config], attributes, connection,
       buildChanges: () => ({ payload: [manual], changes: [] }),
     });
     const result = await updatePrepared(prepared);
@@ -216,5 +218,76 @@ describe("rule-aware mutations", () => {
       buildChanges: () => ({ payload: [manual], changes: [] }),
     })).rejects.toThrow('Choose the object for "Room" again');
     expect(write).not.toHaveBeenCalled();
+  });
+
+  it.each(["edit", "batch", "scan"] as const)("merges a %s clear into one write and reloads the cleared object", async (operation) => {
+    setup();
+    const saved = { ...baseline, attributes: [manual] };
+    vi.spyOn(assetsApi, "getObject").mockResolvedValueOnce(populated).mockResolvedValueOnce(saved);
+    const write = vi.spyOn(assetsApi, "updateObject").mockResolvedValue({ ...populated, attributes: [] });
+    const prepared = await prepareUpdate({
+      object: populated, operation, rules: [clearRule], attributes, connection,
+      buildChanges: () => ({ payload: [manual], changes: ["Room → ROOM-1"] }),
+    });
+    expect(plannedChangeDescriptions(prepared)).toEqual(["Room → ROOM-1", "Status cleared (rule: Activate)"]);
+    const result = await updatePrepared(prepared);
+    expect(write).toHaveBeenCalledTimes(1);
+    expect(write).toHaveBeenCalledWith("1", {
+      objectTypeId: "type", attributes: [manual, { objectTypeAttributeId: "status", objectAttributeValues: [] }],
+    });
+    expect(result.object).toEqual(saved);
+    expect(result.authoritative).toBe(true);
+  });
+
+  it.each([false, true])("sends an explicit creation clear when the target was manually supplied: %s", async (supplied) => {
+    setup();
+    const saved = { ...baseline, attributes: [manual] };
+    vi.spyOn(assetsApi, "getObject").mockResolvedValue(saved);
+    const write = vi.spyOn(assetsApi, "createObject").mockResolvedValue(baseline);
+    const prepared = await prepareCreate({
+      body: { objectTypeId: "type", attributes: supplied ? [manual, automatic] : [manual] },
+      rules: [clearRule], attributes, connection,
+    });
+    expect((await createPrepared(prepared)).object).toEqual(saved);
+    expect(write).toHaveBeenCalledTimes(1);
+    expect(write).toHaveBeenCalledWith({
+      objectTypeId: "type", attributes: [manual, { objectTypeAttributeId: "status", objectAttributeValues: [] }],
+    });
+  });
+
+  it.each(["edit", "batch", "scan", "create"] as const)("rejects a newly required clear target before a %s write", async (operation) => {
+    setup();
+    vi.mocked(assetsApi.getObjectTypeAttributes).mockResolvedValue(attributes.map((attribute) =>
+      attribute.id === "status" ? { ...attribute, minimumCardinality: 1 } : attribute));
+    vi.spyOn(assetsApi, "getObject").mockResolvedValue(populated);
+    const update = vi.spyOn(assetsApi, "updateObject");
+    const create = vi.spyOn(assetsApi, "createObject");
+    const prepare = operation === "create"
+      ? prepareCreate({ body: { objectTypeId: "type", attributes: [manual] }, rules: [clearRule], attributes, connection })
+      : prepareUpdate({
+        object: populated, operation, rules: [clearRule], attributes, connection,
+        buildChanges: () => ({ payload: [manual], changes: [] }),
+      });
+    await expect(prepare).rejects.toThrow('Rule "Activate": "Status" is required and cannot be cleared.');
+    expect(update).not.toHaveBeenCalled();
+    expect(create).not.toHaveBeenCalled();
+  });
+
+  it("clears a reference without looking up its previous value", async () => {
+    setup();
+    const saved = { ...baseline, attributes: [automatic] };
+    const get = vi.spyOn(assetsApi, "getObject").mockResolvedValueOnce({ ...baseline, attributes: [manual] }).mockResolvedValueOnce(saved);
+    vi.spyOn(assetsApi, "updateObject").mockResolvedValue(baseline);
+    const config: Rule = {
+      ...clearRule, watchedAttributeIds: ["status"], conditions: [{ id: "status-set", attributeId: "status", operator: "isSet" }],
+      actions: [{ id: "clear-reference", attributeId: "room", mode: "clear" }],
+    };
+    const prepared = await prepareUpdate({
+      object: baseline, operation: "edit", rules: [config], attributes, connection,
+      buildChanges: () => ({ payload: [automatic], changes: [] }),
+    });
+    await updatePrepared(prepared);
+    expect(prepared.plan.payload).toEqual([automatic, { objectTypeAttributeId: "room", objectAttributeValues: [] }]);
+    expect(get.mock.calls).toEqual([["1"], ["1"]]);
   });
 });

@@ -12,6 +12,8 @@ const attributes: ObjectTypeAttribute[] = [
   { id: "count", name: "Count", type: AttrType.Default, defaultType: { id: DefaultType.Integer, name: "Integer" } },
   { id: "date", name: "Date", type: AttrType.Default, defaultType: { id: DefaultType.Date, name: "Date" } },
   { id: "time", name: "Time", type: AttrType.Default, defaultType: { id: DefaultType.DateTime, name: "DateTime" } },
+  { id: "text", name: "Text", type: AttrType.Default },
+  { id: "choice", name: "Choice", type: AttrType.Default, defaultType: { id: DefaultType.Select, name: "Select" }, options: "One,Two" },
   { id: "members", name: "Members", type: AttrType.ObjectReference, maximumCardinality: -1 },
 ];
 const statuses: StatusType[] = [
@@ -58,7 +60,7 @@ function rule(patch: Partial<Rule> = {}): Rule {
     watchedAttributeIds: ["employee", "student", "room"],
     match: "any",
     conditions: ["employee", "student", "room"].map((attributeId) => ({ id: attributeId, attributeId, operator: "isSet" })),
-    actions: [{ id: "action", attributeId: "status", value: status("active") }],
+    actions: [{ id: "action", attributeId: "status", mode: "set", value: status("active") }],
     ...patch,
   };
 }
@@ -161,5 +163,77 @@ describe("Rules", () => {
     expect(() => parseRules([{ ...rule(), conditions: [{ id: "x", attributeId: "room", operator: "equals" }] }])).toThrow();
     expect(() => parseRules([rule(), rule()])).toThrow("duplicate ID");
     expect(() => parseRules([{ ...rule(), operations: ["unknown"] }])).toThrow("malformed");
+  });
+
+  it.each([
+    ["text", "Hello"], ["status", "inactive"], ["employee", "EMP-10"], ["flag", "false"],
+    ["count", "0"], ["date", "2025-01-02"], ["time", "2025-01-02T00:00:00Z"], ["choice", "One"],
+  ])("clears a populated %s with an empty value array", (attributeId, value) => {
+    const baseline = {
+      ...object,
+      attributes: [...object.attributes.filter((item) => item.objectTypeAttributeId !== attributeId), {
+        objectTypeAttributeId: attributeId, objectAttributeValues: [{ value }],
+      }],
+    };
+    const clear = rule({ actions: [{ id: "clear", attributeId, mode: "clear" }] });
+    const result = plan([clear], [change("room", "ROOM-1")], "edit", baseline);
+    expect(result.payload).toEqual([change("room", "ROOM-1"), change(attributeId, "")]);
+    expect(result.applied).toEqual([{ ruleId: clear.id, ruleName: clear.name, attributeId, mode: "clear" }]);
+  });
+
+  it("omits already-empty update clears, including when they override a manual set", () => {
+    const clear = rule({ actions: [{ id: "clear", attributeId: "employee", mode: "clear" }] });
+    for (const manual of [[], [change("employee", "EMP-10")]]) {
+      const result = plan([clear], [change("room", "ROOM-1"), ...manual]);
+      expect(result.payload).toEqual([change("room", "ROOM-1")]);
+      expect(result.applied).toEqual([]);
+    }
+  });
+
+  it("preserves mixed actions, manual overrides, ordering and non-chaining", () => {
+    const clear = rule({ id: "clear", actions: [
+      { id: "clear-status", attributeId: "status", mode: "clear" },
+      { id: "set-count", attributeId: "count", mode: "set", value: { raw: "8", display: "8" } },
+    ] });
+    const chain = rule({
+      id: "chain", conditions: [{ id: "empty", attributeId: "status", operator: "isEmpty" }],
+      actions: [{ id: "set-text", attributeId: "text", mode: "set", value: { raw: "Chained", display: "" } }],
+    });
+    expect(plan([rule(), clear, chain], [change("room", "ROOM-1"), change("status", "retired")]).payload)
+      .toEqual([change("room", "ROOM-1"), change("status", ""), change("count", "8")]);
+    expect(plan([clear, rule()], [change("room", "ROOM-1")]).payload)
+      .toEqual([change("room", "ROOM-1"), change("status", "active"), change("count", "8")]);
+  });
+
+  it("preserves explicit creation clears with or without a manually supplied target", () => {
+    const clear = rule({ operations: ["create"], actions: [{ id: "clear", attributeId: "status", mode: "clear" }] });
+    for (const manual of [[], [change("status", "active")]]) {
+      const result = planRules({ rules: [clear], scope, operation: "create", changes: [change("room", "ROOM-1"), ...manual], attributes, statuses });
+      expect(result.payload).toEqual([change("room", "ROOM-1"), change("status", "")]);
+      expect(result.applied[0]?.mode).toBe("clear");
+    }
+  });
+
+  it.each([
+    { minimumCardinality: 1 }, { editable: false }, { hidden: true }, { maximumCardinality: -1 },
+  ])("rejects a clear when current metadata disallows its target: %j", (patch) => {
+    const clear = rule({ actions: [{ id: "clear", attributeId: "status", mode: "clear" }] });
+    const current = attributes.map((attribute) => attribute.id === "status" ? { ...attribute, ...patch } : attribute);
+    expect(() => planRules({ rules: [clear], scope, operation: "edit", baseline: object, changes: [change("room", "ROOM-1")], attributes: current, statuses }))
+      .toThrow(`Rule "${clear.name}"`);
+    if ("minimumCardinality" in patch) expect(validateRule(clear, current, statuses)).toContain("required and cannot be cleared");
+  });
+
+  it("defaults legacy actions to set and strictly parses clear action data", () => {
+    const legacy = { ...rule(), actions: [{ id: "action", attributeId: "status", value: status("active") }] };
+    expect(parseRules([legacy])).toEqual([rule()]);
+    const clear = rule({ actions: [{ id: "clear", attributeId: "status", mode: "clear" }] });
+    expect(parseRules(JSON.parse(JSON.stringify([clear])))).toEqual([clear]);
+    for (const action of [
+      { mode: "other" }, { mode: null }, { mode: "set" }, { mode: "set", value: { raw: "", display: "" } },
+      { mode: "clear", value: status("active") }, { mode: "clear", value: null },
+    ]) {
+      expect(() => parseRules([{ ...rule(), actions: [{ id: "bad", attributeId: "status", ...action }] }])).toThrow();
+    }
   });
 });

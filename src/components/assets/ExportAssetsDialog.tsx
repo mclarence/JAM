@@ -4,6 +4,8 @@ import { Loader2 } from "lucide-react";
 import type { ConnectionInfo, ObjectTypeAttribute } from "@/api/types";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog";
+import { Label } from "@/components/ui/primitives";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { exportFileName, saveAssetExport } from "@/lib/assetExport";
 import { notify } from "@/lib/notify";
 
@@ -67,21 +69,29 @@ export function ExportAssetsDialog(props: Props) {
       <DialogContent>
         <DialogTitle>Export assets</DialogTitle>
         <DialogDescription>Save CSV without changing your selection or loaded rows.</DialogDescription>
-        <fieldset disabled={busy} className="grid gap-3">
-          <label className="grid gap-1 text-sm">
-            Assets
-            <select className="rounded border bg-background p-2" value={scope} onChange={(e) => setScope(e.target.value)}>
-              <option value="selected" disabled={!props.selectedIds.length}>Selected assets ({props.selectedIds.length})</option>
-              <option value="all">All matching results, across all pages</option>
-            </select>
-          </label>
-          <label className="grid gap-1 text-sm">
-            Attributes
-            <select className="rounded border bg-background p-2" value={columns} onChange={(e) => setColumns(e.target.value)}>
-              <option value="visible">Visible columns ({props.visibleColumns.length})</option>
-              <option value="all">All available attributes ({props.allColumns.length})</option>
-            </select>
-          </label>
+        <fieldset disabled={busy} className="grid min-w-0 gap-3">
+          <div className="grid min-w-0 gap-1.5">
+            <Label htmlFor="export-assets-scope">Assets</Label>
+            <Select value={scope} onValueChange={setScope} disabled={busy}>
+              <SelectTrigger id="export-assets-scope"><SelectValue /></SelectTrigger>
+              <SelectContent className="max-w-[var(--radix-select-content-available-width)]">
+                <SelectItem value="selected" disabled={!props.selectedIds.length}>
+                  Selected assets ({props.selectedIds.length})
+                </SelectItem>
+                <SelectItem value="all">All matching results, across all pages</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="grid min-w-0 gap-1.5">
+            <Label htmlFor="export-assets-columns">Attributes</Label>
+            <Select value={columns} onValueChange={setColumns} disabled={busy}>
+              <SelectTrigger id="export-assets-columns"><SelectValue /></SelectTrigger>
+              <SelectContent className="max-w-[var(--radix-select-content-available-width)]">
+                <SelectItem value="visible">Visible columns ({props.visibleColumns.length})</SelectItem>
+                <SelectItem value="all">All available attributes ({props.allColumns.length})</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
         </fieldset>
         {columns === "visible" && !props.visibleColumns.length && (
           <p role="status" className="text-sm">No visible columns. Choose all attributes or show columns first.</p>

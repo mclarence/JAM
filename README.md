@@ -7,8 +7,6 @@ A cross-platform desktop app (Windows, macOS, Linux) for managing IT assets stor
 
 ## Screenshots
 
-> Screenshots are not yet included. Add images to `docs/screenshots/` using the file names below and they will render here.
-
 | Dashboard | Assets grid |
 | --- | --- |
 | ![Dashboard](docs/screenshots/dashboard.png) | ![Assets grid](docs/screenshots/assets.png) |
@@ -17,9 +15,9 @@ A cross-platform desktop app (Windows, macOS, Linux) for managing IT assets stor
 | --- | --- |
 | ![Quick Scan](docs/screenshots/quick-scan.png) | ![Label designer](docs/screenshots/label-designer.png) |
 
-| Settings | Dark mode |
+| Settings | |
 | --- | --- |
-| ![Settings](docs/screenshots/settings.png) | ![Dark mode](docs/screenshots/dark-mode.png) |
+| ![Settings](docs/screenshots/settings.png)|
 
 ## Features
 
@@ -30,6 +28,8 @@ A cross-platform desktop app (Windows, macOS, Linux) for managing IT assets stor
 - **Detail drawer**: view all attributes, revision history and linked objects of an asset.
 - **Create asset** dialog, with optional automatic **asset tags** (see Settings).
 - **Batch update**: change an attribute across multiple selected rows at once.
+- **Inline column bulk editing**: hold **Ctrl** (Windows/Linux) or **Cmd** (macOS) and drag through cells in one editable column. Repeat the gesture to add more ranges in that column, then double-click any highlighted cell to open its usual editor. Releasing the mouse only keeps the highlights; committing the editor applies one value to those assets, independently of checkbox selection. Choosing the clicked cell's existing value still updates other highlighted cells. Optional student/object references can also be cleared. Existing batch rules apply; progress, per-asset errors and **Retry failed** are shown. System, multi-value and other currently read-only attributes stay read-only.
+- Clear cell highlights with **Escape**, **Clear highlights**, or a plain click outside them. Starting a modifier-drag in another column replaces the selection; changing the search, filter, sort, object type or connection, leaving the page, or hiding the selected column clears it. During editing, Escape cancels the editor without saving; a second Escape clears highlights. A changed table context disables retries of a previous failed batch.
 - **Column drawer**: show, hide and reorder columns; preferences persist.
 - **Search and filtering**: global quick search, an attribute filter builder, and a raw **AQL** (Assets Query Language) input. AQL filters can be saved as named presets.
 - **Status colour-coding**: status values render as badges whose colours you can map per status name.
@@ -54,11 +54,13 @@ Built for handheld barcode/QR scanners. Scan or type a value and press Enter to 
 - Per-scan result log showing updated, unchanged and failed scans, with optional audio feedback.
 
 ### Rules
-Rules automatically set attributes as part of saves made in this app. Open **Settings → Rules**, select a schema and object type, then create, edit, enable, disable, delete or reorder rules. Rules are stored locally for the Jira workspace and object type; they do not sync with the iOS app or run for changes made in Jira or another client. Desktop settings exports can include rules.
+Rules automatically set or clear attributes as part of saves made in this app. Open **Settings → Rules**, select a schema and object type, then create, edit, enable, disable, delete or reorder rules. Rules are stored locally for the Jira workspace and object type; they do not sync with the iOS app or run for changes made in Jira or another client. Desktop settings exports can include rules.
 
-Each rule selects the operations to run on, the attributes to watch, an **any** or **all** group of conditions, and fixed values to set. New rules run on individual edits, batch updates and Quick Scan; object creation is opt-in. For example, watch **Assigned to Employee**, **Assigned to Student** and **Room**; add an **is set** condition for each using **any**; then set **Status** to **Active**.
+Each rule selects the operations to run on, the attributes to watch, an **any** or **all** group of conditions, and actions to set or clear attributes. New rules run on individual edits, batch updates and Quick Scan; object creation is opt-in. For example, watch **Assigned to Employee**, **Assigned to Student** and **Room**; add an **is set** condition for each using **any**; then set **Status** to **Active**.
 
-At least one watched attribute must actually change in the user's save. Conditions see the existing object with the user's changes applied, including clears. All rules evaluate that same snapshot: actions do not trigger other rules, and later matching rules win if they set the same attribute, even over a manually entered value. Presence conditions can inspect multi-valued and read-only attributes; fixed-value actions target editable single-valued attributes. Creation starts with an empty object, and the create form's required fields must still be supplied manually.
+Under **Then set or clear these attributes**, choose **Set value** to enter a fixed value, or **Clear value** to remove an optional attribute's value without entering one. A blank Set value input is invalid, not a clear action. Required attributes cannot be cleared; this is checked again against current metadata before execution. Actions still target supported editable single-valued attributes. A rule can mix set and clear actions. Existing saved rules and older settings imports keep their Set value behavior; exports containing clear actions require a version that supports them.
+
+At least one watched attribute must actually change in the user's save. Conditions see the existing object with the user's changes applied, including clears. All rules evaluate that same snapshot: actions do not trigger other rules, and later matching rules win if they target the same attribute, even over a manually entered value. Presence conditions can inspect multi-valued and read-only attributes. Clearing an already-empty attribute during an update is a no-op. Creation starts with an empty object, and the create form's required fields must still be supplied manually. A matching creation clear is sent explicitly, including when it overrides a manually entered optional value; Jira still controls server defaults and constraints.
 
 Invalid applicable rules block the affected save with an error; other assets in a batch can still succeed. Following a successful rule-driven save, the grid and open detail are updated automatically from the refreshed object. Filters or pagination may exclude the object from the grid. If the save succeeds but refresh fails, the app warns that the display may be stale and offers a retry; refresh before editing that asset again rather than repeating the save.
 
@@ -160,7 +162,9 @@ pnpm dev
 
 ```sh
 pnpm typecheck                 # TypeScript
-pnpm test                      # Rules and settings tests
+pnpm test                      # Frontend unit and integration tests
+pnpm exec playwright install chromium webkit # Once, for browser tests
+pnpm test:browser              # Mocked inline bulk editing in Chromium and WebKit
 (cd src-tauri && cargo check)  # Rust
 
 pnpm tauri build               # installers in src-tauri/target/release/bundle

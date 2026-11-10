@@ -22,7 +22,7 @@ function rule(id: string): Rule {
     id, name: id, enabled: true, cloudId: "cloud", workspaceId: "workspace", schemaId: "schema", objectTypeId: "type",
     operations: ["edit", "batch"], watchedAttributeIds: ["room"], match: "any",
     conditions: [{ id: `${id}-condition`, attributeId: "room", operator: "isSet" }],
-    actions: [{ id: `${id}-action`, attributeId: "status", value: { raw: "active", display: "Active" } }],
+    actions: [{ id: `${id}-action`, attributeId: "status", mode: "set", value: { raw: "active", display: "Active" } }],
   };
 }
 
@@ -67,5 +67,32 @@ describe("Rules settings transfer and persistence", () => {
     expect(() => parseImport(envelope([{ ...rule("broken"), actions: [] }]))).toThrow("at least one valid action");
     expect(() => parseImport(envelope([{ ...rule("broken"), operations: ["other"] }]))).toThrow("malformed");
     expect(() => parseImport(envelope([rule("duplicate"), rule("duplicate")]))).toThrow("duplicate ID");
+  });
+
+  it("persists mixed actions and round-trips clear actions through export, merge and replace", async () => {
+    const mixed = rule("mixed");
+    mixed.actions.push({ id: "clear-room", attributeId: "room", mode: "clear" });
+    useSettings.getState().saveRule(mixed);
+    const saved = data.get("settings");
+    const bundle = parseImport(buildExport());
+    expect(bundle.rules).toEqual([mixed]);
+    expect(sectionCounts(bundle).rules).toBe(1);
+    useSettings.setState({ rules: [] });
+    data.set("settings", saved!);
+    await useSettings.persist.rehydrate();
+    expect(useSettings.getState().rules).toEqual([mixed]);
+    applyImport({ rules: [rule("first")] }, selected, "replace");
+    applyImport(bundle, selected, "merge");
+    expect(useSettings.getState().rules).toEqual([rule("first"), mixed]);
+    applyImport(bundle, selected, "replace");
+    expect(useSettings.getState().rules).toEqual([mixed]);
+  });
+
+  it("hydrates legacy set actions without a mode and imports them as set actions", async () => {
+    const legacy = { ...rule("legacy"), actions: [{ id: "legacy-action", attributeId: "status", value: { raw: "active", display: "Active" } }] };
+    data.set("settings", JSON.stringify({ state: { rules: [legacy] }, version: 1 }));
+    await useSettings.persist.rehydrate();
+    expect(useSettings.getState().rules[0].actions[0].mode ?? "set").toBe("set");
+    expect(parseImport(buildExport()).rules).toEqual([rule("legacy")]);
   });
 });

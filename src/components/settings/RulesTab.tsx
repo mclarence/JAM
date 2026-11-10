@@ -182,14 +182,14 @@ function RuleEditor({
   const usedActions = new Set(draft.actions.map((action) => action.attributeId));
   const updateCondition = (id: string, patch: Partial<RuleCondition>) =>
     setDraft((rule) => ({ ...rule, conditions: rule.conditions.map((condition) => condition.id === id ? { ...condition, ...patch } : condition) }));
-  const updateAction = (id: string, patch: Partial<RuleAction>) =>
-    setDraft((rule) => ({ ...rule, actions: rule.actions.map((action) => action.id === id ? { ...action, ...patch } : action) }));
+  const updateAction = (next: RuleAction) =>
+    setDraft((rule) => ({ ...rule, actions: rule.actions.map((action) => action.id === next.id ? next : action) }));
 
   return (
     <>
       <DialogHeader>
         <DialogTitle>{initial.name ? "Edit rule" : "New rule"}</DialogTitle>
-        <DialogDescription>Choose operations, watched fields, conditions, and values to set. Rules do not trigger other rules.</DialogDescription>
+        <DialogDescription>Choose operations, watched fields, conditions, and attributes to set or clear. Rules do not trigger other rules.</DialogDescription>
       </DialogHeader>
       <div className="grid gap-5">
         <div className="grid gap-2">
@@ -271,26 +271,37 @@ function RuleEditor({
           }))}><Plus /> Add condition</Button></div>
         </section>
         <section className="grid gap-3">
-          <h3 className="text-sm font-medium">Then set these attributes</h3>
+          <h3 className="text-sm font-medium">Then set or clear these attributes</h3>
           {draft.actions.map((action) => {
             const attr = attributes.find((item) => item.id === action.attributeId);
             return (
-              <div key={action.id} className="grid gap-2 rounded-md border p-3 sm:grid-cols-[1fr_1fr_auto]">
+              <div key={action.id} className="grid gap-2 rounded-md border p-3 sm:grid-cols-[1fr_1fr_1fr_auto]">
                 <AttributeSelect
                   value={action.attributeId}
                   attributes={actionOptions.filter((item) => item.id === action.attributeId || !usedActions.has(item.id))}
                   label="Action attribute"
-                  onChange={(attributeId) => updateAction(action.id, { attributeId, value: emptyValue() })}
+                  onChange={(attributeId) => updateAction({ id: action.id, attributeId, mode: "set", value: emptyValue() })}
                 />
-                {attr ? <RuleValueInput attr={attr} value={action.value} statuses={statuses} onChange={(value) => updateAction(action.id, { value })} /> : <span />}
+                <Select value={action.mode ?? "set"} onValueChange={(mode) => {
+                  if (mode === "clear") updateAction({ id: action.id, attributeId: action.attributeId, mode });
+                  else if (mode === "set") updateAction({ id: action.id, attributeId: action.attributeId, mode, value: emptyValue() });
+                }}>
+                  <SelectTrigger aria-label="Action mode"><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="set">Set value</SelectItem>
+                    <SelectItem value="clear" disabled={(attr?.minimumCardinality ?? 0) > 0}>Clear value</SelectItem>
+                  </SelectContent>
+                </Select>
+                {attr && action.mode !== "clear" ? <RuleValueInput attr={attr} value={action.value} statuses={statuses} onChange={(value) => updateAction({ ...action, value })} /> : <span />}
                 <Button variant="ghost" size="icon" aria-label="Remove action" onClick={() => setDraft((rule) => ({ ...rule, actions: rule.actions.filter((item) => item.id !== action.id) }))}><Trash2 /></Button>
               </div>
             );
           })}
           <div><Button size="sm" variant="outline" disabled={!actionOptions.some((attribute) => !usedActions.has(attribute.id))} onClick={() => {
             const attribute = actionOptions.find((item) => !usedActions.has(item.id));
-            if (attribute) setDraft((rule) => ({ ...rule, actions: [...rule.actions, { id: crypto.randomUUID(), attributeId: attribute.id, value: emptyValue() }] }));
+            if (attribute) setDraft((rule) => ({ ...rule, actions: [...rule.actions, { id: crypto.randomUUID(), attributeId: attribute.id, mode: "set", value: emptyValue() }] }));
           }}><Plus /> Add action</Button></div>
+          <p className="text-xs text-muted-foreground">Clear value removes an optional attribute's value. Required attributes cannot be cleared.</p>
         </section>
         {problem && <p role="status" className="text-sm text-destructive">{problem}</p>}
       </div>
