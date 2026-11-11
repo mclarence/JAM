@@ -8,6 +8,7 @@ vi.mock("@/store/theme", () => ({ useThemeStore: { getState: () => ({ pref: "sys
 
 import { DEFAULT_STATUS_COLORS } from "@/lib/statusColors";
 import { useQuickScan } from "@/store/quickScan";
+import { useReports } from "@/store/reports";
 import { useSettings } from "@/store/settings";
 import { useTemplates } from "@/store/templates";
 import { useUpdater } from "@/store/updater";
@@ -35,6 +36,7 @@ function reset() {
   useQuickScan.setState({ configs: {}, presets: {}, sound: true });
   useTemplates.setState({ templates: [], defaultTemplateId: null, selectedId: null });
   useUpdater.setState({ channel: "stable", autoCheck: true });
+  useReports.setState({ sources: [], reports: [], mappings: {}, lastReportId: null });
 }
 
 const adapter = () =>
@@ -162,8 +164,53 @@ describe("desktop sync adapter", () => {
     await runSync(state, a, transport, ctx, async () => {});
     const scopes = new Set(uploaded.map((b) => b.scope));
     expect(scopes).toEqual(new Set(["shared", "desktop"]));
+    const desktopKinds = new Set(Object.keys(fixture.desktop).map((rid) => rid.slice("desktop|".length).split(":")[0]));
     for (const b of uploaded) {
-      for (const r of b.body.records) expect(r.key.startsWith("template") || r.key.startsWith("defaultTemplate") || r.key.startsWith("labelDefaults") || r.key.startsWith("columnSizes") || r.key.startsWith("updater")).toBe(b.scope === "desktop");
+      for (const r of b.body.records) expect(desktopKinds.has(r.key.split(":")[0])).toBe(b.scope === "desktop");
     }
+  });
+
+  describe("report records", () => {
+    const srcRid = "desktop|reportSource:cloud-1:ws-1:src-1";
+    const repRid = "desktop|report:cloud-1:ws-1:rep-1";
+
+    it("never syncs identity mappings, results or the last opened report", () => {
+      const a = adapter();
+      a.apply(changes({ [srcRid]: fixture.desktop[srcRid], [repRid]: fixture.desktop[repRid] }));
+      useReports.getState().setMapping("src-1", "7", "Jane Student", "STU-12");
+      useReports.getState().setLastReport("rep-1");
+      const text = JSON.stringify(Object.fromEntries(a.project()));
+      for (const banned of ["Jane Student", "STU-12", "mappings", "lastReportId", "rows", "runId", "softDelete"]) expect(text).not.toContain(banned);
+      expect(a.project().get(srcRid)).toEqual(fixture.desktop[srcRid]);
+    });
+
+    it("defers report records from another workspace and only projects the connected one", () => {
+      const a = adapter();
+      const other = "desktop|report:cloud-1:ws-2:rep-9";
+      expect(a.isManaged(other)).toBe(false);
+      expect(a.apply(changes({ [other]: fixture.desktop[repRid] }))).toEqual([{ status: "deferred" }]);
+      expect(useReports.getState().reports).toEqual([]);
+    });
+
+    it("rejects reports with unsafe or unsupported queries", () => {
+      const a = adapter();
+      const report = fixture.desktop[repRid] as { spec: Record<string, Json> };
+      const bad = a.apply(changes({
+        [repRid]: { ...report, spec: { ...report.spec, v: 2 } },
+        "desktop|report:cloud-1:ws-1:rep-2": { ...report, spec: { ...report.spec, filter: { kind: "condition", field: "x", op: "__raw" } } },
+        "desktop|reportSource:cloud-1:ws-1:src-2": { ...(fixture.desktop[srcRid] as object), objectTypeIds: [] },
+      }));
+      expect(bad.map((r) => r.status)).toEqual(["invalid", "invalid", "invalid"]);
+      expect(useReports.getState().reports).toEqual([]);
+      expect(useReports.getState().sources).toEqual([]);
+    });
+
+    it("keeps reports when their source is deleted remotely", () => {
+      const a = adapter();
+      a.apply(changes({ [srcRid]: fixture.desktop[srcRid], [repRid]: fixture.desktop[repRid] }));
+      a.apply([{ rid: srcRid, value: undefined, parents: [] }]);
+      expect(useReports.getState().sources).toEqual([]);
+      expect(useReports.getState().reports.map((r) => r.id)).toEqual(["rep-1"]);
+    });
   });
 });

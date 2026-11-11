@@ -6,6 +6,7 @@ mod files;
 mod google;
 mod http;
 mod proxy;
+mod reports;
 mod sync;
 mod sync_crypto;
 mod updater;
@@ -20,6 +21,7 @@ pub fn run() {
         .manage(connection::AppState::new())
         .manage(updater::UpdaterState::default())
         .manage(sync::SyncManager::default())
+        .manage(reports::ReportsState::default())
         .invoke_handler(tauri::generate_handler![
             connection::connect,
             connection::get_connection,
@@ -51,6 +53,18 @@ pub fn run() {
             sync::sync_push,
             sync::sync_state_load,
             sync::sync_state_save,
+            reports::reports_status,
+            reports::reports_fields,
+            reports::reports_estimate,
+            reports::reports_refresh,
+            reports::reports_cancel,
+            reports::reports_run,
+            reports::reports_page,
+            reports::reports_chart,
+            reports::reports_export,
+            reports::reports_field_values,
+            reports::reports_unresolved,
+            reports::reports_clear,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

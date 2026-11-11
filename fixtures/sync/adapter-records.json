@@ -61,6 +61,25 @@
     "desktop|defaultTemplate": "t1",
     "desktop|labelDefaults": { "unit": "in", "width": 2, "height": 1 },
     "desktop|columnSizes:cloud-1:ws-1:42": { "a1": 120, "a2": 80 },
-    "desktop|updater": { "channel": "nightly", "autoCheck": false }
+    "desktop|updater": { "channel": "nightly", "autoCheck": false },
+    "desktop|reportSource:cloud-1:ws-1:src-1": {
+      "name": "Student laptops", "objectTypeIds": ["42"], "scopeAql": "\"Location\" = \"North\"", "attributeAliases": { "7": ["Borrower"] },
+      "updatedAt": 1700000000000
+    },
+    "desktop|report:cloud-1:ws-1:rep-1": {
+      "name": "Borrowing by week", "sourceId": "src-1",
+      "spec": {
+        "v": 1, "entity": "events", "mode": "aggregate", "timezone": "Australia/Sydney", "includeUnavailable": true, "includeSoftDeleted": false,
+        "filter": { "kind": "group", "join": "and", "children": [
+          { "kind": "condition", "field": "event.created", "op": "last", "value": { "amount": 90, "unit": "day" } },
+          { "kind": "group", "join": "or", "children": [{ "kind": "condition", "field": "event.operation", "op": "in", "value": ["assigned", "reassigned"] }] }
+        ] },
+        "groupBy": [{ "field": "event.created", "bucket": "week" }],
+        "measures": [{ "id": "count", "fn": "count" }, { "id": "m2", "fn": "distinct", "field": "event.newObject", "label": "Borrowers" }],
+        "sort": { "column": "d0", "desc": false }
+      },
+      "view": { "visual": "line", "measure": 0, "top": 10 },
+      "updatedAt": 1700000000001
+    }
   }
 }

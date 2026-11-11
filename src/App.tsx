@@ -1,7 +1,9 @@
-import { useEffect, useState } from "react";
+import { lazy, Suspense, useEffect, useState } from "react";
+import { Loader2 } from "lucide-react";
 import { useGlobalHotkeys } from "@/hooks/useGlobalHotkeys";
 import { useAutoUpdate } from "@/hooks/useAutoUpdate";
 import { useQuickScan } from "@/store/quickScan";
+import { useReports } from "@/store/reports";
 import { useSettings } from "@/store/settings";
 import { startSync } from "@/store/sync";
 import { useTemplates } from "@/store/templates";
@@ -15,7 +17,10 @@ import { QuickScanPage } from "@/pages/QuickScanPage";
 import { TemplatesPage } from "@/pages/TemplatesPage";
 import { SettingsPage } from "@/pages/SettingsPage";
 
-const PERSISTED = [useSettings, useTemplates, useQuickScan, useUpdater] as const;
+// Charts and the report builder load on first use.
+const ReportsPage = lazy(() => import("@/pages/ReportsPage").then((m) => ({ default: m.ReportsPage })));
+
+const PERSISTED = [useSettings, useTemplates, useQuickScan, useUpdater, useReports] as const;
 
 function usePersistedStoresReady() {
   const check = () => PERSISTED.every((store) => store.persist.hasHydrated());
@@ -57,6 +62,11 @@ export default function App() {
           {ready && page === "assets" && <AssetsPage />}
           {ready && page === "quickscan" && <QuickScanPage />}
           {ready && page === "templates" && <TemplatesPage />}
+          {ready && page === "reports" && (
+            <Suspense fallback={<Loader2 className="m-auto size-5 animate-spin text-muted-foreground" />}>
+              <ReportsPage />
+            </Suspense>
+          )}
           {ready && page === "settings" && <SettingsPage />}
         </main>
       </div>

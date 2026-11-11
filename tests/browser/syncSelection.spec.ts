@@ -6,8 +6,9 @@ const fixture = "/tests/browser/fixtures/syncSelection.html";
 test("category choices require confirmation, support keyboard input, and can pause sync", async ({ page }) => {
   await page.goto(fixture);
   const columns = page.getByRole("checkbox", { name: "Columns (visibility, order and desktop widths)", exact: true });
-  await expect(page.getByRole("checkbox")).toHaveCount(13);
+  await expect(page.getByRole("checkbox")).toHaveCount(14);
   await expect(columns).toBeChecked();
+  await expect(page.getByRole("checkbox", { name: "Report templates and data sources (desktop only)", exact: true })).not.toBeChecked();
   await expect(page.getByText("Sync is paused until you confirm", { exact: false })).toBeVisible();
   await columns.focus();
   await page.keyboard.press("Space");

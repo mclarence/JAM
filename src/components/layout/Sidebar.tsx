@@ -1,4 +1,4 @@
-import { LayoutDashboard, PanelLeftClose, PanelLeftOpen, ScanLine, Server, Settings, Tag, type LucideIcon } from "lucide-react";
+import { ChartColumn, LayoutDashboard, PanelLeftClose, PanelLeftOpen, ScanLine, Server, Settings, Tag, type LucideIcon } from "lucide-react";
 import { useConnection } from "@/api/queries";
 import { Tooltip } from "@/components/ui/overlays";
 import { cn } from "@/lib/utils";
@@ -9,6 +9,7 @@ const NAV: { page: Page; label: string; icon: LucideIcon }[] = [
   { page: "assets", label: "Assets", icon: Server },
   { page: "quickscan", label: "Quick Scan", icon: ScanLine },
   { page: "templates", label: "Label Templates", icon: Tag },
+  { page: "reports", label: "Reports", icon: ChartColumn },
   { page: "settings", label: "Settings", icon: Settings },
 ];
 

@@ -33,6 +33,9 @@ pub enum AppError {
     SyncStale,
     #[error("Cancelled.")]
     Cancelled,
+    /// Report data changed after a report ran; run it again.
+    #[error("The report data changed. Run the report again.")]
+    Stale,
 }
 
 impl AppError {
@@ -53,6 +56,7 @@ impl AppError {
             AppError::SyncAuth(_) => "syncAuth",
             AppError::SyncStale => "syncStale",
             AppError::Cancelled => "cancelled",
+            AppError::Stale => "stale",
         }
     }
 

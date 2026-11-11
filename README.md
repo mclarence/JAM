@@ -83,6 +83,18 @@ Rules are client-side, not server-side automation or an atomic compare-and-set. 
 - Create, duplicate, rename, edit and delete templates; mark one as the default.
 - Select rows in the grid and use the sticky action bar to print with the default template, or pick another from the split menu. Output is a PDF that is saved to disk or opened in the system viewer.
 
+### Reports
+- **Report builder**: pick a data source and what to report on (**Assets** or **History** changes), then add filter chips (date ranges such as "last 3 months", people, assets, categories, statuses, any attribute), nested AND/OR groups, up to 2 groupings (including by day, week or month) and measures (count, count with value, distinct count, sum, average).
+- **Views**: switch between a sortable, paged table, KPI cards, and bar, line and breakdown (pie) charts without re-running. Views that don't suit a result are disabled with the reason.
+- **Saved reports**: save, duplicate and rename reports, including filters, groupings, columns and view settings. Export results to CSV or JSON, or save a printable PDF summary.
+- **Example**: to see how often a student borrowed anything, report on History, filter *Object added* is the student and *Changed at* is in the last 90 days, then group by week. Every borrowing is counted, whichever asset it was.
+- **Past versus current assignments**: to compare all past borrowers, group by the historical *Assigned to student (added)* field and filter it to *is not empty*, with your date range. Fields labelled *(current)* use the latest collected assignment, not the borrower at the time of each change. Historical reference fields are generated for every reference attribute; existing saved reports keep their current-value behavior until you change their fields.
+- **Reference labels**: history recorded as names is included as-is without matching. References display labels rather than appended object keys. **Match names** is optional, for linking a recorded name to a known object's history; existing cached history is updated locally without fetching from Jira.
+- **Jira usage**: reports run against a local database on this device and never call Jira. Data is only fetched when you press **Refresh** and confirm an estimate of the requests. Only the object types and optional AQL scope chosen for the data source are collected. Later refreshes only fetch history for new or changed assets, with request limits (4 concurrent, 5 per second by default), back-off on rate limiting, and resume after interruption. A full refresh is allowed once an hour.
+- **Privacy**: collected data and name matches stay on this device until you clear them (Refresh → Clear local data). They are never synced or backed up. Report templates and data source definitions can be included in sync and settings backups.
+
+See [docs/reports.md](docs/reports.md) for the architecture and how to add data sources, filters, measures and charts.
+
 ### Settings
 - **Connection**: Atlassian site URL, account email and API token. The token is stored in the OS credential vault (Keychain, Credential Manager, Secret Service) and is never exposed to the web UI.
 - **Network**: optional proxy URL, option to accept invalid certificates, and a "web proxy sign-in" flow for networks where a filter (for example Zscaler) requires a browser login first.
@@ -102,14 +114,14 @@ Open **Settings → Sync** and sign in with Google, then choose a sync password 
 | Syncs with | Settings |
 | --- | --- |
 | All devices (desktop and iOS) | Site URL and email, selected schema and object type, theme, saved filters, status colours, columns, asset tags, reference fields, rules, deletion settings, Quick Scan settings |
-| Other computers only | Label templates and default template, label defaults, column widths, update settings |
+| Other computers only | Label templates and default template, label defaults, column widths, update settings, report templates and data sources (unchecked by default) |
 | Never | Jira API token (enter it on each device), network/proxy options, the Google sign-in itself |
 
 #### Choose what syncs on each device
 
 Use the **Sync on this device** checkboxes and **Confirm sync choices** before enabling sync. After this update, previously enrolled devices also pause until you confirm their categories. Supported categories start checked, but nothing starts syncing until you confirm and review any differences.
 
-Uncheck a category to stop both incoming changes and outgoing edits on this device. Existing local settings and cloud records stay intact, and other devices keep syncing that category. For example, exclude **Columns** on iOS to keep its own visibility/order while desktop clients continue sharing visibility/order and desktop-only widths. Rules and their order stay together; Quick Scan settings, presets and sound stay together; label templates/defaults are desktop-only.
+Uncheck a category to stop both incoming changes and outgoing edits on this device. Existing local settings and cloud records stay intact, and other devices keep syncing that category. For example, exclude **Columns** on iOS to keep its own visibility/order while desktop clients continue sharing visibility/order and desktop-only widths. Rules and their order stay together; Quick Scan settings, presets and sound stay together; label templates/defaults are desktop-only. **Report templates and data sources** is unchecked by default; collected report data and name matches never sync. Deleting a synced data source on another computer removes it here but leaves its collected data until you clear it on this computer.
 
 Save changes to the checklist whenever you want. Newly enabled categories show a review with explicit **Keep this device's version** or **Use synced version** choices, including removals/defaults. Keeping local settings can update other devices. Cancel leaves those categories disabled; interrupted reviews remain gated after restarting. Uncheck everything to pause settings sync without signing out. Choices are local to this installation, retained across sign-out and sync reset, and never included in synced settings or portable backups.
 
@@ -217,6 +229,22 @@ JAM_GOOGLE_CLIENT_ID=1234-abc.apps.googleusercontent.com JAM_GOOGLE_CLIENT_SECRE
 
 The release and nightly workflows read the `JAM_GOOGLE_CLIENT_ID` and `JAM_GOOGLE_CLIENT_SECRET` repository secrets.
 
+### macOS app signing in CI
+
+The [release](.github/workflows/release.yml) and [nightly](.github/workflows/nightly.yml) workflows require the same persistent, self-signed code-signing identity for macOS builds. Export the identity, including its private key, from Keychain Access as a password-protected `.p12`, then add these repository secrets under **Settings > Secrets and variables > Actions**:
+
+| Secret | Value |
+| --- | --- |
+| `MACOS_CERTIFICATE_P12` | Base64-encoded `.p12` contents (`base64 -i signing.p12 \| pbcopy` on macOS) |
+| `MACOS_CERTIFICATE_PASSWORD` | Password protecting the exported `.p12` |
+| `MACOS_SIGNING_IDENTITY` | Exact certificate name shown by `security find-identity -v -p codesigning` |
+
+Never commit the certificate, private key or encoded contents. Keep a secure backup of the identity and reuse it for every nightly, release and local build; recreating it changes the app's signing identity. For local builds, set `APPLE_SIGNING_IDENTITY` to the same certificate name.
+
+On the disposable GitHub-hosted macOS runner, the workflows import the identity into a temporary keychain, trust its certificate for code signing, verify it is available, and pass it to Tauri through `APPLE_SIGNING_IDENTITY`. Missing or invalid signing secrets fail the macOS build rather than producing an unsigned update. Temporary keychain and certificate files are cleaned up even after build failure. Windows and Linux builds are unchanged.
+
+This signing is separate from updater signing below. It does not provide Apple notarization or remove Gatekeeper warnings on other Macs. Existing Keychain items may need one final **Always Allow** approval; verify access by updating between two builds signed with the same identity.
+
 ### Updater signing
 
 Release builds are signed for the auto-updater. Generate your own key pair and replace `plugins.updater.pubkey` in [src-tauri/tauri.conf.json](src-tauri/tauri.conf.json):
@@ -230,18 +258,18 @@ pnpm tauri signer generate
 ```
 src/            React + TypeScript frontend
   api/          Jira Assets API client, types and TanStack Query hooks
-  components/   assets grid, label designer, quick scan, settings, UI primitives
-  lib/          AQL helpers, asset tags, batch update, quick scan logic
-  pages/        Dashboard, Assets, Quick Scan, Templates, Settings
+  components/   assets grid, label designer, quick scan, reports, settings, UI primitives
+  lib/          AQL helpers, asset tags, batch update, quick scan logic, report model/filters/visuals
+  pages/        Dashboard, Assets, Quick Scan, Reports, Templates, Settings
   store/        Zustand stores (settings, templates, theme, updater, ...)
-src-tauri/      Rust host: credential storage, HTTP/proxy, backup crypto, PDF files, updater
-docs/           Jira Assets API spec and auth reference notes
+src-tauri/      Rust host: credential storage, HTTP/proxy, backup crypto, PDF files, updater, reports engine (SQLite)
+docs/           Jira Assets API spec, auth notes, sync protocol, reports guide
 .github/        Release and nightly CI workflows
 ```
 
 ## Tech stack
 
-Tauri 2 (Rust), React 19, TypeScript, Vite, Tailwind CSS 4, Radix UI, TanStack Query / Table / Virtual, Zustand, bwip-js, jsPDF.
+Tauri 2 (Rust), React 19, TypeScript, Vite, Tailwind CSS 4, Radix UI, TanStack Query / Table / Virtual, Zustand, Recharts, SQLite (rusqlite), bwip-js, jsPDF.
 
 ## License
 

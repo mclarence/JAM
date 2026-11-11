@@ -130,7 +130,7 @@ Before first sync, users confirm this device's category checklist and review dif
 
 Category choices are local preferences, not wire records. A missing, invalid or unsupported preferences file gates sync until explicit confirmation, including existing enrolled devices upgrading to this feature. An explicitly empty selection pauses settings sync without deleting settings or signing out. The local preference file stores version 1, selected categories, approved active categories, and the generation to which that approval belongs. A different vault generation requires review again; choices themselves survive sign-out/reset.
 
-`fixtures/sync/categories.json` maps record kinds to stable categories. Connection, selection, theme, filters, columns, asset tags, reference display, status colours, rules, deletions and Quick Scan are shared categories. Rule and ruleOrder are grouped, as are scanConfig/scanPreset/scanSound. Desktop columnSizes belongs to columns. Desktop template/defaultTemplate/labelDefaults belong to labels; updater belongs to updater. iOS offers neither labels nor updater, and never downloads desktop-scoped batches.
+`fixtures/sync/categories.json` maps record kinds to stable categories. Connection, selection, theme, filters, columns, asset tags, reference display, status colours, rules, deletions and Quick Scan are shared categories. Rule and ruleOrder are grouped, as are scanConfig/scanPreset/scanSound. Desktop columnSizes belongs to columns. Desktop template/defaultTemplate/labelDefaults belong to labels; updater belongs to updater; reportSource/report belong to reports. iOS offers none of labels, updater or reports, and never downloads desktop-scoped batches. The reports category is off until the user selects it: existing installs keep their confirmed selection, which does not include it.
 
 Apply the policy to projection, management, capture, incoming application, previews/conflicts, suggestions, conflict resolution and every pending-upload path. Exclusion leaves local values and cloud records unchanged; absence from the filtered projection must not generate a deletion. Settings in an existing mixed-category encrypted file can still be downloaded/decrypted into local history. This is application/upload filtering, not a cloud erasure or no-download guarantee.
 
@@ -183,6 +183,8 @@ Key parts are joined with `:`, each encoded with `encodeURIComponent` semantics 
 | `labelDefaults` | `{unit, width, height}`; default `{mm, 62, 29}` is absent; PDF output mode is device-local |
 | `columnSizes:<c>:<w>:<type>` | `{attrId: width}` |
 | `updater` | `{channel, autoCheck}`; default `{stable, true}` is absent |
+| `reportSource:<c>:<w>:<id>` | `{name, objectTypeIds, scopeAql, attributeAliases: {attrId: [oldName]}, updatedAt}`; collected data and name matches are device-local and never synced |
+| `report:<c>:<w>:<id>` | `{name, sourceId, spec, view, updatedAt}`; `spec` is the query without soft-delete markers (derived from `deletion` on each run); results are never synced. A report whose source is missing stays until removed |
 
 ## 7. Storage provider: Google Drive
 

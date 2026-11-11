@@ -6,7 +6,7 @@ import { Input } from "@/components/ui/input";
 import { Card, Label } from "@/components/ui/primitives";
 import { notify } from "@/lib/notify";
 import { describeRecord, summarizeValue } from "@/lib/sync/labels";
-import { ALL_CATEGORIES, SYNC_CATEGORIES, type SyncCategory } from "@/lib/sync/categories";
+import { ALL_CATEGORIES, DEFAULT_CATEGORIES, SYNC_CATEGORIES, type SyncCategory } from "@/lib/sync/categories";
 import type { SelectionReview } from "@/lib/sync/selection";
 import { syncActions, useSync, type ConflictView } from "@/store/sync";
 
@@ -121,8 +121,8 @@ function Scope() {
 }
 
 function CategoryChecklist({ selected, busy }: { selected: SyncCategory[] | null; busy: boolean }) {
-  const [draft, setDraft] = useState<SyncCategory[]>(selected ?? ALL_CATEGORIES);
-  useEffect(() => setDraft(selected ?? ALL_CATEGORIES), [selected]);
+  const [draft, setDraft] = useState<SyncCategory[]>(selected ?? DEFAULT_CATEGORIES);
+  useEffect(() => setDraft(selected ?? DEFAULT_CATEGORIES), [selected]);
   return (
     <Card className="grid gap-3 p-4 text-sm">
       <p className="font-medium">Sync on this device</p>

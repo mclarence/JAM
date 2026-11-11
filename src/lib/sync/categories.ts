@@ -14,10 +14,13 @@ export const SYNC_CATEGORIES = [
   { id: "quickScan", label: "Quick Scan settings, presets and sound" },
   { id: "labels", label: "Label templates and defaults (desktop only)" },
   { id: "updater", label: "Updater settings (desktop only)" },
+  { id: "reports", label: "Report templates and data sources (desktop only)" },
 ] as const;
 
 export type SyncCategory = (typeof SYNC_CATEGORIES)[number]["id"];
 export const ALL_CATEGORIES: SyncCategory[] = SYNC_CATEGORIES.map((c) => c.id);
+/** Proposed when choosing for the first time. Reports are opt-in because their sources may describe sensitive scopes. */
+export const DEFAULT_CATEGORIES: SyncCategory[] = ALL_CATEGORIES.filter((c) => c !== "reports");
 export const CATEGORY_RECORDS: Record<string, Record<string, SyncCategory>> = {
   shared: {
     connection: "connection", selection: "selection", theme: "theme", filter: "filters", columns: "columns",
@@ -27,6 +30,7 @@ export const CATEGORY_RECORDS: Record<string, Record<string, SyncCategory>> = {
   },
   desktop: {
     columnSizes: "columns", template: "labels", defaultTemplate: "labels", labelDefaults: "labels", updater: "updater",
+    reportSource: "reports", report: "reports",
   },
 };
 

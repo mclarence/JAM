@@ -20,6 +20,8 @@ const KINDS: Record<string, string> = {
   labelDefaults: "Label defaults",
   columnSizes: "Column widths",
   updater: "Update settings",
+  reportSource: "Report data source",
+  report: "Report",
 };
 
 const nameOf = (v: Json | undefined) =>

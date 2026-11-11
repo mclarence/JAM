@@ -16,6 +16,8 @@ vi.stubGlobal("localStorage", {
 
 const { applyImport, buildExport, parseImport, sectionCounts } = await import("./settingsTransfer");
 const { useSettings } = await import("@/store/settings");
+const { useReports } = await import("@/store/reports");
+const { newSpec } = await import("@/lib/reports/model");
 const selected = new Set<Section>(["rules"]);
 
 function rule(id: string): Rule {
@@ -115,5 +117,41 @@ describe("Rules settings transfer and persistence", () => {
     await useSettings.persist.rehydrate();
     expect(useSettings.getState().rules[0].actions[0].mode ?? "set").toBe("set");
     expect(parseImport(buildExport()).rules).toEqual([rule("legacy")]);
+  });
+});
+
+describe("Report settings transfer", () => {
+  const source = (id: string) => ({ id, name: id, cloudId: "cloud", workspaceId: "workspace", objectTypeIds: ["1"], scopeAql: "", attributeAliases: {}, updatedAt: 1 });
+  const report = (id: string, sourceId: string) => ({
+    id, name: id, sourceId, cloudId: "cloud", workspaceId: "workspace", spec: { ...newSpec("events"), timezone: "UTC" },
+    view: { visual: "table" as const, measure: 0, top: 10 }, updatedAt: 1,
+  });
+  const sections = new Set<Section>(["reports"]);
+
+  beforeEach(() => useReports.setState({ sources: [source("s1")], reports: [report("r1", "s1")], mappings: { s1: { "7": { "Jane": "STU-1" } } }, lastReportId: "r1" }));
+
+  it("exports templates and sources but never device-local name matches", () => {
+    const text = buildExport();
+    expect(text).not.toContain("STU-1");
+    expect(text).not.toContain("lastReportId");
+    const bundle = parseImport(text);
+    expect(bundle.reports).toEqual({ sources: [source("s1")], reports: [report("r1", "s1")] });
+    expect(sectionCounts(bundle).reports).toBe(2);
+  });
+
+  it("skips malformed entries, merges by ID, and prunes matches for removed sources on replace", () => {
+    const envelope = JSON.stringify({
+      format: "jira-assets-manager-settings", version: 1,
+      reports: { sources: [source("s2"), { ...source("bad"), objectTypeIds: [] }], reports: [report("r2", "s2"), { ...report("r3", "s2"), spec: { v: 9 } }] },
+    });
+    const bundle = parseImport(envelope);
+    expect(sectionCounts(bundle).reports).toBe(2);
+    applyImport(bundle, sections, "merge");
+    expect(useReports.getState().sources.map((x) => x.id)).toEqual(["s1", "s2"]);
+    expect(useReports.getState().mappings.s1).toBeDefined();
+    applyImport(bundle, sections, "replace");
+    expect(useReports.getState().reports.map((x) => x.id)).toEqual(["r2"]);
+    expect(useReports.getState().mappings).toEqual({});
+    expect(useReports.getState().lastReportId).toBeNull();
   });
 });

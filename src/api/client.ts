@@ -18,6 +18,7 @@ export type ApiErrorKind =
   | "syncAuth"
   | "syncStale"
   | "cancelled"
+  | "stale"
   | "unknown";
 
 export class ApiError extends Error {
@@ -40,7 +41,7 @@ function toApiError(e: unknown): ApiError {
   return new ApiError(typeof e === "string" ? e : "Unexpected error");
 }
 
-async function call<T>(cmd: string, args?: Record<string, unknown>): Promise<T> {
+export async function call<T>(cmd: string, args?: Record<string, unknown>): Promise<T> {
   if (!isTauri()) {
     throw new ApiError("This feature requires the desktop app (run with `pnpm tauri dev`).", "notConnected");
   }

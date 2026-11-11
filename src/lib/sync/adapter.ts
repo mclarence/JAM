@@ -6,10 +6,12 @@ import type { ConnectionInfo } from "@/api/types";
 import type { LabelTemplate } from "@/components/labels/model";
 import { SEARCH_KEY } from "@/lib/aql";
 import { deletionScope, parseDeletionConfigs, type DeletionConfig } from "@/lib/deletion";
+import { parseReport, parseSource, ReportInvalid, sameWorkspace, type ReportSource, type SavedReport } from "@/lib/reports/model";
 import { parseRules, type Rule } from "@/lib/rules";
 import { cleanTemplate } from "@/lib/settingsTransfer";
 import { COLOR_KEYS, DEFAULT_STATUS_COLORS, type ColorKey } from "@/lib/statusColors";
 import { flushStores } from "@/store/persist";
+import { useReports } from "@/store/reports";
 import { useQuickScan, type ScanAction, type ScanConfig, type ScanPreset } from "@/store/quickScan";
 import { useSettings } from "@/store/settings";
 import { useTemplates } from "@/store/templates";
@@ -28,13 +30,14 @@ export interface DesktopDeps {
 export const DESKTOP_SCOPES = ["shared", "desktop"] as const;
 
 /** Record kinds whose key starts with `<cloudId>:<workspaceId>` and whose local storage is per object type only. */
-const WORKSPACE_KINDS = new Set(["columns", "assetTag", "referenceDisplay", "scanConfig", "scanPreset", "columnSizes"]);
+const WORKSPACE_KINDS = new Set(["columns", "assetTag", "referenceDisplay", "scanConfig", "scanPreset", "columnSizes", "reportSource", "report"]);
+const DESKTOP_WORKSPACE_KINDS = new Set(["columnSizes", "reportSource", "report"]);
 const GLOBAL_KINDS = new Set([
   "shared|theme", "shared|filter", "shared|statusColor", "shared|rule", "shared|ruleOrder", "shared|deletion", "shared|scanSound",
   "desktop|template", "desktop|defaultTemplate", "desktop|labelDefaults", "desktop|updater",
 ]);
 /** Application order inside one batch of changes, so that dependent records land after what they refer to. */
-const APPLY_ORDER = ["rule", "ruleOrder", "columns", "columnSizes", "template", "defaultTemplate"];
+const APPLY_ORDER = ["rule", "ruleOrder", "columns", "columnSizes", "template", "defaultTemplate", "reportSource", "report"];
 
 const DEFAULT_LABEL = { unit: "mm", width: 62, height: 29 } as const;
 const DEFAULT_UPDATER = { channel: "stable", autoCheck: true } as const;
@@ -71,7 +74,15 @@ const FIELDS = {
   updater: ["channel", "autoCheck"],
   rule: ["id", "name", "enabled", "cloudId", "workspaceId", "schemaId", "objectTypeId", "operations", "watchedAttributeIds", "match", "conditions", "actions"],
   template: ["id", "name", "unit", "width", "height", "layout", "elements", "updatedAt"],
+  reportSource: ["name", "objectTypeIds", "scopeAql", "attributeAliases", "updatedAt"],
+  report: ["name", "sourceId", "spec", "view", "updatedAt"],
 } as const;
+
+/** Report records carry IDs, AQL and configuration only; identity mappings and results stay on this device. */
+const canonSource = (s: ReportSource): Obj =>
+  JSON.parse(JSON.stringify({ name: s.name, objectTypeIds: s.objectTypeIds, scopeAql: s.scopeAql, attributeAliases: s.attributeAliases, updatedAt: s.updatedAt })) as Obj;
+const canonReport = (r: SavedReport): Obj =>
+  JSON.parse(JSON.stringify({ name: r.name, sourceId: r.sourceId, spec: r.spec, view: r.view, updatedAt: r.updatedAt })) as Obj;
 
 const canonAction = (a: ScanAction): Obj => ({ id: a.id, attrId: a.attrId, mode: a.mode, value: a.value, display: a.display });
 
@@ -192,6 +203,13 @@ export function createDesktopAdapter(deps: DesktopDeps): Adapter {
           put("shared", ws(conn, "scanPreset", type, p.id), { name: p.name, lookups: p.lookups, actions: p.actions.map(canonAction) }, FIELDS.scanPreset);
         }
       }
+      const r = useReports.getState();
+      for (const source of r.sources) {
+        if (sameWorkspace(source, conn)) put("desktop", ws(conn, "reportSource", source.id), canonSource(source), FIELDS.reportSource);
+      }
+      for (const report of r.reports) {
+        if (sameWorkspace(report, conn)) put("desktop", ws(conn, "report", report.id), canonReport(report), FIELDS.report);
+      }
     }
 
     for (const tpl of t.templates) put("desktop", recordKey("template", tpl.id), JSON.parse(JSON.stringify(tpl)) as Json, FIELDS.template);
@@ -212,7 +230,7 @@ export function createDesktopAdapter(deps: DesktopDeps): Adapter {
     const conn = deps.connection();
     if (scope === "shared" && (kind === "connection" || kind === "selection")) return !!conn;
     if (WORKSPACE_KINDS.has(kind)) {
-      const expected = kind === "columnSizes" ? "desktop" : "shared";
+      const expected = DESKTOP_WORKSPACE_KINDS.has(kind) ? "desktop" : "shared";
       return scope === expected && !!conn && cloudId === conn.cloudId && workspaceId === conn.workspaceId;
     }
     return GLOBAL_KINDS.has(`${scope}|${kind}`);
@@ -433,6 +451,30 @@ export function createDesktopAdapter(deps: DesktopDeps): Adapter {
         const d = (v ?? DEFAULT_UPDATER) as { channel: "stable" | "nightly"; autoCheck: boolean };
         useUpdater.getState().setChannel(d.channel);
         useUpdater.getState().setAutoCheck(d.autoCheck);
+        return { status: "applied" };
+      }
+      case "desktop|reportSource":
+      case "desktop|report": {
+        const [, cloudId, workspaceId, id] = parts;
+        if (!conn || cloudId !== conn.cloudId || workspaceId !== conn.workspaceId) return { status: "deferred" };
+        const parse = kind === "report" ? parseReport : parseSource;
+        let item: ReportSource | SavedReport | null = null;
+        if (v !== undefined) {
+          check(isObj(v));
+          try {
+            item = parse({ ...(v as Obj), id, cloudId, workspaceId });
+          } catch (e) {
+            throw new Invalid(e instanceof ReportInvalid ? e.message : "The synced report is malformed.");
+          }
+        }
+        // A deleted source leaves its reports in place; they cannot run until the source returns.
+        const listKey = kind === "report" ? "reports" : "sources";
+        useReports.setState((s) => {
+          const list = s[listKey] as (ReportSource | SavedReport)[];
+          const rest = list.filter((x) => x.id !== id);
+          if (!item) return { [listKey]: rest };
+          return { [listKey]: list.some((x) => x.id === id) ? list.map((x) => (x.id === id ? item! : x)) : [...rest, item] };
+        });
         return { status: "applied" };
       }
       default:

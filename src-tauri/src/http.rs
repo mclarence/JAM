@@ -48,6 +48,90 @@ fn error_message(status: u16, body: &str) -> String {
     }
 }
 
+pub struct Failure {
+    pub error: AppError,
+    /// Server-requested delay from a `Retry-After` header (seconds form only).
+    pub retry_after: Option<std::time::Duration>,
+}
+
+impl From<AppError> for Failure {
+    fn from(error: AppError) -> Self {
+        Self { error, retry_after: None }
+    }
+}
+
+fn parse_method(method: &str) -> AppResult<Method> {
+    match method.to_ascii_uppercase().as_str() {
+        "GET" => Ok(Method::GET),
+        "POST" => Ok(Method::POST),
+        "PUT" => Ok(Method::PUT),
+        "DELETE" => Ok(Method::DELETE),
+        m => Err(AppError::Invalid(format!("Unsupported method {m}"))),
+    }
+}
+
+/// The account a long-running job started with; requests fail if the connection changes mid-job.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Principal {
+    pub cloud_id: String,
+    pub workspace_id: String,
+    pub email: String,
+}
+
+/// Sends one authenticated request to the connected workspace's Assets API and parses the JSON response.
+pub(crate) async fn send(
+    state: &AppState,
+    expect: Option<&Principal>,
+    method: &str,
+    path: &str,
+    query: Option<&[(String, String)]>,
+    body: Option<&Value>,
+) -> Result<Value, Failure> {
+    validate_path(path)?;
+    let method = parse_method(method)?;
+    let conn = state.current()?;
+    if let Some(p) = expect {
+        if p.cloud_id != conn.cloud_id || p.workspace_id != conn.workspace_id || !p.email.eq_ignore_ascii_case(&conn.email) {
+            return Err(AppError::Invalid("The Jira connection changed while collecting report data. Refresh again.".into()).into());
+        }
+    }
+    let url = format!("{}{}", conn.api_base, path);
+
+    let mut req = state
+        .client()
+        .request(method, &url)
+        .header("Authorization", conn.auth_header())
+        .header("Accept", "application/json");
+    if let Some(q) = query {
+        req = req.query(q);
+    }
+    if let Some(b) = body {
+        req = req.json(b);
+    }
+
+    let res = req.send().await.map_err(AppError::from)?;
+    let status = res.status();
+    let header = |name: reqwest::header::HeaderName| res.headers().get(name).and_then(|v| v.to_str().ok()).map(str::to_owned);
+    let content_type = header(reqwest::header::CONTENT_TYPE);
+    let retry_after = header(reqwest::header::RETRY_AFTER)
+        .and_then(|v| v.trim().parse::<u64>().ok())
+        .map(|s| std::time::Duration::from_secs(s.min(600)));
+    if let Some(e) = proxy_block(status.as_u16(), content_type.as_deref()) {
+        return Err(e.into());
+    }
+    let text = res.text().await.map_err(AppError::from)?;
+    if !status.is_success() {
+        return Err(Failure {
+            error: AppError::Http { status: status.as_u16(), message: error_message(status.as_u16(), &text) },
+            retry_after,
+        });
+    }
+    if text.trim().is_empty() {
+        return Ok(Value::Null);
+    }
+    serde_json::from_str(&text).map_err(|e| AppError::Invalid(format!("Invalid JSON response: {e}")).into())
+}
+
 /// Proxies a JIRA Assets REST call. `path` is relative to the workspace API base.
 #[tauri::command]
 pub async fn assets_request(
@@ -57,48 +141,5 @@ pub async fn assets_request(
     query: Option<Vec<(String, String)>>,
     body: Option<Value>,
 ) -> AppResult<Value> {
-    validate_path(&path)?;
-    let method = match method.to_ascii_uppercase().as_str() {
-        "GET" => Method::GET,
-        "POST" => Method::POST,
-        "PUT" => Method::PUT,
-        "DELETE" => Method::DELETE,
-        m => return Err(AppError::Invalid(format!("Unsupported method {m}"))),
-    };
-    let conn = state.current()?;
-    let url = format!("{}{}", conn.api_base, path);
-
-    let mut req = state
-        .client()
-        .request(method, &url)
-        .header("Authorization", conn.auth_header())
-        .header("Accept", "application/json");
-    if let Some(q) = &query {
-        req = req.query(q);
-    }
-    if let Some(b) = &body {
-        req = req.json(b);
-    }
-
-    let res = req.send().await?;
-    let status = res.status();
-    let content_type = res
-        .headers()
-        .get(reqwest::header::CONTENT_TYPE)
-        .and_then(|v| v.to_str().ok())
-        .map(str::to_owned);
-    if let Some(e) = proxy_block(status.as_u16(), content_type.as_deref()) {
-        return Err(e);
-    }
-    let text = res.text().await?;
-    if !status.is_success() {
-        return Err(AppError::Http {
-            status: status.as_u16(),
-            message: error_message(status.as_u16(), &text),
-        });
-    }
-    if text.trim().is_empty() {
-        return Ok(Value::Null);
-    }
-    serde_json::from_str(&text).map_err(|e| AppError::Invalid(format!("Invalid JSON response: {e}")))
+    send(&state, None, &method, &path, query.as_deref(), body.as_ref()).await.map_err(|f| f.error)
 }

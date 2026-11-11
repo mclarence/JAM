@@ -9,12 +9,14 @@ import { useSettings, type AqlPreset, type ColumnPrefs, type PdfOutput } from "@
 import { useQuickScan, type ScanAction, type ScanPreset } from "@/store/quickScan";
 import { useTemplates } from "@/store/templates";
 import { useThemeStore, type ThemePref } from "@/store/theme";
+import { parseReport, parseSource, type ReportSource, type SavedReport } from "@/lib/reports/model";
+import { useReports } from "@/store/reports";
 
 // Only whitelisted data is exported, so the API token, auth settings and network options can never leak into a file.
 const FORMAT = "jira-assets-manager-settings";
 const VERSION = 1;
 
-export type Section = "filters" | "columns" | "assetTags" | "referenceDisplay" | "statusColors" | "rules" | "deletions" | "scanPresets" | "templates" | "preferences";
+export type Section = "filters" | "columns" | "assetTags" | "referenceDisplay" | "statusColors" | "rules" | "deletions" | "scanPresets" | "templates" | "reports" | "preferences";
 export type ImportMode = "merge" | "replace";
 
 export const SECTION_LABELS: Record<Section, string> = {
@@ -27,6 +29,7 @@ export const SECTION_LABELS: Record<Section, string> = {
   deletions: "Deletion settings (workspace and object type)",
   scanPresets: "Quick Scan presets",
   templates: "Label templates",
+  reports: "Report templates and data sources",
   preferences: "Preferences (selected schema/type, label defaults, theme)",
 };
 
@@ -48,6 +51,8 @@ export interface SettingsBundle {
   /** Quick Scan presets per object type id. */
   scanPresets?: Record<string, ScanPreset[]>;
   templates?: { items: LabelTemplate[]; defaultTemplateId: string | null };
+  /** Definitions only. Collected data and name matches (which can contain people's names) stay on the device. */
+  reports?: { sources: ReportSource[]; reports: SavedReport[] };
   preferences?: Preferences;
 }
 
@@ -64,6 +69,7 @@ export function buildExport(): string {
     deletions: s.deletions,
     scanPresets: useQuickScan.getState().presets,
     templates: { items: t.templates, defaultTemplateId: t.defaultTemplateId },
+    reports: { sources: useReports.getState().sources, reports: useReports.getState().reports },
     preferences: {
       schemaId: s.schemaId,
       objectTypeId: s.objectTypeId,
@@ -253,6 +259,17 @@ export function parseImport(text: string): SettingsBundle {
     const def = isStr(raw.templates.defaultTemplateId) ? raw.templates.defaultTemplateId : null;
     bundle.templates = { items, defaultTemplateId: items.some((t) => t.id === def) ? def : null };
   }
+  if (isObj(raw.reports)) {
+    const keep = <T,>(list: unknown, parse: (v: unknown) => T) =>
+      Array.isArray(list) ? list.flatMap((x) => {
+        try {
+          return [parse(x)];
+        } catch {
+          return [];
+        }
+      }) : [];
+    bundle.reports = { sources: keep(raw.reports.sources, parseSource), reports: keep(raw.reports.reports, parseReport) };
+  }
   const prefs = cleanPreferences(raw.preferences);
   if (prefs) bundle.preferences = prefs;
 
@@ -271,6 +288,7 @@ export function sectionCounts(b: SettingsBundle): Partial<Record<Section, number
     ...(b.deletions && { deletions: Object.keys(b.deletions).length }),
     ...(b.scanPresets && { scanPresets: Object.values(b.scanPresets).reduce((n, l) => n + l.length, 0) }),
     ...(b.templates && { templates: b.templates.items.length }),
+    ...(b.reports && { reports: b.reports.sources.length + b.reports.reports.length }),
     ...(b.preferences && { preferences: 1 }),
   };
 }
@@ -329,6 +347,14 @@ export function applyImport(bundle: SettingsBundle, sections: Set<Section>, mode
       defaultTemplateId: fallback,
       selectedId: templates.some((x) => x.id === t.selectedId) ? t.selectedId : (templates[0]?.id ?? null),
     });
+  }
+  if (sections.has("reports") && bundle.reports) {
+    const r = useReports.getState();
+    const sources = replace ? bundle.reports.sources : mergeById(r.sources, bundle.reports.sources);
+    const reports = replace ? bundle.reports.reports : mergeById(r.reports, bundle.reports.reports);
+    const ids = new Set(sources.map((x) => x.id));
+    const mappings = Object.fromEntries(Object.entries(r.mappings).filter(([id]) => ids.has(id)));
+    useReports.setState({ sources, reports, mappings, lastReportId: reports.some((x) => x.id === r.lastReportId) ? r.lastReportId : null });
   }
   if (sections.has("preferences") && bundle.preferences) useThemeStore.getState().setPref(bundle.preferences.theme);
 }

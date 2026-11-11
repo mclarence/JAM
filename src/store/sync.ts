@@ -33,6 +33,7 @@ import {
 } from "@/lib/sync/engine";
 import { useQuickScan } from "@/store/quickScan";
 import { useSettings } from "@/store/settings";
+import { useReports } from "@/store/reports";
 import { useTemplates } from "@/store/templates";
 import { useThemeStore } from "@/store/theme";
 import { useUpdater } from "@/store/updater";
@@ -358,7 +359,7 @@ export function startSync() {
   });
 
   const onLocalChange = () => schedule();
-  for (const store of [useSettings, useQuickScan, useTemplates, useUpdater, useThemeStore] as { subscribe: (l: () => void) => () => void }[]) {
+  for (const store of [useSettings, useQuickScan, useTemplates, useUpdater, useThemeStore, useReports] as { subscribe: (l: () => void) => () => void }[]) {
     store.subscribe(onLocalChange);
   }
   queryClient.getQueryCache().subscribe((event) => {

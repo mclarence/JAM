@@ -16,53 +16,106 @@ import { useUi, type SettingsTab } from "@/store/ui";
 export function SettingsPage() {
   const { settingsTab, navigate } = useUi();
   return (
-    <div className="flex-1 overflow-auto p-8">
+    <div className="flex min-h-0 flex-1 flex-col overflow-hidden p-8">
       <PageHeader title="Settings" description="Connection, data source, Rules, status colours, label defaults and sync." />
-      <Tabs value={settingsTab} onValueChange={(v) => navigate("settings", v as SettingsTab)}>
-        <TabsList>
-          <TabsTrigger value="connection">API Connection</TabsTrigger>
-          <TabsTrigger value="schema">Schema &amp; Object Type</TabsTrigger>
-          <TabsTrigger value="assetTag">Asset Tag</TabsTrigger>
-          <TabsTrigger value="deletion">Deletion</TabsTrigger>
-          <TabsTrigger value="reference">Reference Fields</TabsTrigger>
-          <TabsTrigger value="status">Status Colours</TabsTrigger>
-          <TabsTrigger value="rules">Rules</TabsTrigger>
-          <TabsTrigger value="labels">Label Defaults</TabsTrigger>
-          <TabsTrigger value="backup">Import / Export</TabsTrigger>
-          <TabsTrigger value="sync">Sync</TabsTrigger>
-          <TabsTrigger value="updates">Updates</TabsTrigger>
+      <Tabs
+        value={settingsTab}
+        onValueChange={(v) => navigate("settings", v as SettingsTab)}
+        orientation="vertical"
+        className="flex min-h-0 flex-1 gap-6"
+      >
+        <TabsList
+          aria-label="Settings categories"
+          className="h-full w-56 shrink-0 flex-col items-stretch justify-start gap-1 self-stretch overflow-y-auto rounded-none border-r bg-transparent px-0 py-1 pr-4 text-left"
+        >
+          <div role="presentation" className="px-3 pb-1 pt-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+            Connection
+          </div>
+          <TabsTrigger value="connection" className="h-9 w-full justify-start border-l-2 border-transparent px-3 data-[state=active]:border-primary data-[state=active]:bg-accent data-[state=active]:shadow-none">
+            API Connection
+          </TabsTrigger>
+
+          <div role="presentation" className="px-3 pb-1 pt-4 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+            Workspace
+          </div>
+          <TabsTrigger value="schema" className="h-9 w-full justify-start border-l-2 border-transparent px-3 data-[state=active]:border-primary data-[state=active]:bg-accent data-[state=active]:shadow-none">
+            Schema &amp; Object Type
+          </TabsTrigger>
+          <TabsTrigger value="assetTag" className="h-9 w-full justify-start border-l-2 border-transparent px-3 data-[state=active]:border-primary data-[state=active]:bg-accent data-[state=active]:shadow-none">
+            Asset Tag
+          </TabsTrigger>
+          <TabsTrigger value="deletion" className="h-9 w-full justify-start border-l-2 border-transparent px-3 data-[state=active]:border-primary data-[state=active]:bg-accent data-[state=active]:shadow-none">
+            Deletion
+          </TabsTrigger>
+          <TabsTrigger value="reference" className="h-9 w-full justify-start border-l-2 border-transparent px-3 data-[state=active]:border-primary data-[state=active]:bg-accent data-[state=active]:shadow-none">
+            Reference Fields
+          </TabsTrigger>
+          <TabsTrigger value="status" className="h-9 w-full justify-start border-l-2 border-transparent px-3 data-[state=active]:border-primary data-[state=active]:bg-accent data-[state=active]:shadow-none">
+            Status Colours
+          </TabsTrigger>
+          <TabsTrigger value="rules" className="h-9 w-full justify-start border-l-2 border-transparent px-3 data-[state=active]:border-primary data-[state=active]:bg-accent data-[state=active]:shadow-none">
+            Rules
+          </TabsTrigger>
+
+          <div role="presentation" className="px-3 pb-1 pt-4 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+            Labels
+          </div>
+          <TabsTrigger value="labels" className="h-9 w-full justify-start border-l-2 border-transparent px-3 data-[state=active]:border-primary data-[state=active]:bg-accent data-[state=active]:shadow-none">
+            Label Defaults
+          </TabsTrigger>
+
+          <div role="presentation" className="px-3 pb-1 pt-4 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+            Data
+          </div>
+          <TabsTrigger value="backup" className="h-9 w-full justify-start border-l-2 border-transparent px-3 data-[state=active]:border-primary data-[state=active]:bg-accent data-[state=active]:shadow-none">
+            Import / Export
+          </TabsTrigger>
+
+          <div role="presentation" className="px-3 pb-1 pt-4 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+            Sync
+          </div>
+          <TabsTrigger value="sync" className="h-9 w-full justify-start border-l-2 border-transparent px-3 data-[state=active]:border-primary data-[state=active]:bg-accent data-[state=active]:shadow-none">
+            Sync Settings
+          </TabsTrigger>
+
+          <div role="presentation" className="px-3 pb-1 pt-4 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+            Updates
+          </div>
+          <TabsTrigger value="updates" className="h-9 w-full justify-start border-l-2 border-transparent px-3 data-[state=active]:border-primary data-[state=active]:bg-accent data-[state=active]:shadow-none">
+            Update Preferences
+          </TabsTrigger>
         </TabsList>
-        <TabsContent value="connection">
+        <TabsContent value="connection" className="m-0 min-w-0 flex-1 overflow-y-auto">
           <ConnectionTab />
         </TabsContent>
-        <TabsContent value="schema">
+        <TabsContent value="schema" className="m-0 min-w-0 flex-1 overflow-y-auto">
           <SchemaTab />
         </TabsContent>
-        <TabsContent value="assetTag">
+        <TabsContent value="assetTag" className="m-0 min-w-0 flex-1 overflow-y-auto">
           <AssetTagTab />
         </TabsContent>
-        <TabsContent value="deletion">
+        <TabsContent value="deletion" className="m-0 min-w-0 flex-1 overflow-y-auto">
           <DeletionTab />
         </TabsContent>
-        <TabsContent value="reference">
+        <TabsContent value="reference" className="m-0 min-w-0 flex-1 overflow-y-auto">
           <ReferenceDisplayTab />
         </TabsContent>
-        <TabsContent value="status">
+        <TabsContent value="status" className="m-0 min-w-0 flex-1 overflow-y-auto">
           <StatusColorsTab />
         </TabsContent>
-        <TabsContent value="rules">
+        <TabsContent value="rules" className="m-0 min-w-0 flex-1 overflow-y-auto">
           <RulesTab />
         </TabsContent>
-        <TabsContent value="labels">
+        <TabsContent value="labels" className="m-0 min-w-0 flex-1 overflow-y-auto">
           <LabelDefaultsTab />
         </TabsContent>
-        <TabsContent value="backup">
+        <TabsContent value="backup" className="m-0 min-w-0 flex-1 overflow-y-auto">
           <BackupTab />
         </TabsContent>
-        <TabsContent value="sync">
+        <TabsContent value="sync" className="m-0 min-w-0 flex-1 overflow-y-auto">
           <SyncTab />
         </TabsContent>
-        <TabsContent value="updates">
+        <TabsContent value="updates" className="m-0 min-w-0 flex-1 overflow-y-auto">
           <UpdatesTab />
         </TabsContent>
       </Tabs>

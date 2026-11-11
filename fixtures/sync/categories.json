@@ -20,6 +20,8 @@
     "template": "labels",
     "defaultTemplate": "labels",
     "labelDefaults": "labels",
-    "updater": "updater"
+    "updater": "updater",
+    "reportSource": "reports",
+    "report": "reports"
   }
 }
