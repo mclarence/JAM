@@ -1,4 +1,4 @@
-import { assetsApi, getCompleteObject, isLast } from "@/api/assets";
+import { assetsApi, isLast, PAGE_SIZE, selectedExportQuery, validateExportPage } from "@/api/assets";
 import { connectionApi, fileApi } from "@/api/client";
 import type { AssetObject, ConnectionInfo, ObjectTypeAttribute } from "@/api/types";
 import { AttrType, DefaultType } from "@/api/types";
@@ -51,58 +51,108 @@ export async function checkExportContext(input: Pick<ExportInput, "signal" | "co
   input.signal.throwIfAborted();
 }
 
-export async function prepareAssetExport(input: ExportInput): Promise<{ csv: string; count: number }> {
+export interface ExportSummary {
+  count: number;
+  skippedIds: string[];
+  missingIds: string[];
+}
+
+export interface PreparedAssetExport extends ExportSummary {
+  csv: string;
+}
+
+export function skippedExportWarning(result: ExportSummary): string {
+  const missing = result.missingIds.length;
+  const deleted = result.skippedIds.length - missing;
+  return `Skipped ${result.skippedIds.length.toLocaleString()} selected assets: ${missing.toLocaleString()} not returned by search; ${deleted.toLocaleString()} matched deletion markers.`;
+}
+
+export async function prepareAssetExport(input: ExportInput): Promise<PreparedAssetExport> {
   if (!input.columns.length) throw new Error("Choose at least one column to export.");
   const chunks = ["\uFEFF" + csvRecord(input.columns.map((attr) => attr.name))];
-  const seen = new Set<string>();
+  const skippedIds: string[] = [];
+  const missingIds: string[] = [];
   let count = 0;
-  const append = async (id: string) => {
-    if (seen.has(id)) return;
-    seen.add(id);
-    await checkExportContext(input);
-    const object = await getCompleteObject(id);
-    await checkExportContext(input);
-    if (object.objectType.id !== input.typeId) {
-      throw new Error("An exported asset no longer belongs to the selected object type. Retry the export.");
+  const append = (object: AssetObject) => {
+    input.signal.throwIfAborted();
+    if (isSoftDeleted(object, useSettings.getState().deletions, input.connection)) {
+      if (input.selectedIds) skippedIds.push(object.id);
+      return;
     }
-    if (isSoftDeleted(object, useSettings.getState().deletions, input.connection)) return;
     chunks.push(assetCsvRow(object, input.columns));
     input.onProgress(++count);
   };
-  if (input.selectedIds) {
-    for (const id of input.selectedIds) await append(id);
-  } else {
+  const validateType = (object: AssetObject) => {
+    if (object.objectType.id !== input.typeId) {
+      throw new Error("An exported asset no longer belongs to the selected object type. Retry the export.");
+    }
+  };
+  const fetchPages = async (query: string, selected: boolean, receive: (object: AssetObject) => void) => {
+    const seen = new Set<string>();
     let start = 0;
     for (;;) {
       await checkExportContext(input);
-      const page = await assetsApi.searchObjects(input.aql, start);
+      const page = await assetsApi.searchExportObjects(query, start, selected);
       await checkExportContext(input);
-      if (page.startAt !== start || (!page.values.length && !isLast(page))) {
-        throw new Error("The server returned an incomplete export page. Retry the export.");
-      }
+      validateExportPage(page, start);
       const previousCount = seen.size;
-      for (const object of page.values) await append(object.id);
+      for (const object of page.values) {
+        input.signal.throwIfAborted();
+        validateType(object);
+        if (!seen.has(object.id)) {
+          receive(object);
+          seen.add(object.id);
+        }
+      }
       if (isLast(page)) break;
       if (seen.size === previousCount) throw new Error("Export pagination stopped making progress. Retry the export.");
       start = page.startAt + page.values.length;
     }
+  };
+  if (input.selectedIds) {
+    const ids = [...new Set(input.selectedIds)];
+    // Validate the entire selection before making any requests.
+    for (let offset = 0; offset < ids.length; offset += PAGE_SIZE) selectedExportQuery(ids.slice(offset, offset + PAGE_SIZE));
+    for (let offset = 0; offset < ids.length; offset += PAGE_SIZE) {
+      const batch = ids.slice(offset, offset + PAGE_SIZE);
+      const requested = new Set(batch);
+      const objects = new Map<string, AssetObject>();
+      await fetchPages(selectedExportQuery(batch), true, (object) => {
+        if (!requested.has(object.id)) throw new Error("The export response included an unexpected selected asset.");
+        objects.set(object.id, object);
+      });
+      for (const id of batch) {
+        const object = objects.get(id);
+        if (object) append(object);
+        else {
+          skippedIds.push(id);
+          missingIds.push(id);
+        }
+      }
+    }
+  } else {
+    await fetchPages(input.aql, false, append);
   }
   await checkExportContext(input);
-  if (!count) throw new Error("No assets match this export. Adjust the filters or selection.");
-  return { csv: chunks.join(""), count };
+  const summary = { count, skippedIds, missingIds };
+  if (!count) throw new Error(`No exportable assets match this export. Adjust the filters or selection.${skippedIds.length ? ` ${skippedExportWarning(summary)}` : ""}`);
+  return { csv: chunks.join(""), ...summary };
 }
 
 export async function saveAssetExport(
   input: ExportInput,
   defaultPath: string,
   choosePath: (defaultPath: string) => Promise<string | null>,
-): Promise<number | null> {
+  beforeSave?: (summary: ExportSummary) => Promise<boolean>,
+): Promise<ExportSummary | null> {
   const result = await prepareAssetExport(input);
+  if (beforeSave && !await beforeSave(result)) return null;
+  await checkExportContext(input);
   const path = await choosePath(defaultPath);
   await checkExportContext(input);
   if (!path) return null;
   await fileApi.saveCsv(path, result.csv);
-  return result.count;
+  return { count: result.count, skippedIds: result.skippedIds, missingIds: result.missingIds };
 }
 
 export function exportFileName(typeName: string): string {

@@ -2,6 +2,7 @@ import { useState } from "react";
 import { createRoot } from "react-dom/client";
 import { mockIPC } from "@tauri-apps/api/mocks";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { Toaster } from "sonner";
 import { assetsApi } from "../../../src/api/assets";
 import { connectionApi, fileApi } from "../../../src/api/client";
 import { AttrType, type AssetObject, type ConnectionInfo, type ObjectTypeAttribute } from "../../../src/api/types";
@@ -93,18 +94,23 @@ assetsApi.searchObjects = async (query, startAt = 0, maxResults = 100) => {
     values,
   });
 };
-assetsApi.getObject = async (id) => {
-  requestedIds.push(id);
+assetsApi.searchExportObjects = async (query, startAt = 0, selected = false) => {
+  searches.push({ query, startAt });
   if (waitForRead) await waitForRead;
   if (readError) {
     const message = readError;
     readError = undefined;
     throw new Error(message);
   }
-  const object = objects.find((item) => item.id === id);
-  if (!object) throw new Error(`Unknown fixture asset ${id}`);
-  returnedIds.push(id);
-  return structuredClone(object);
+  const ids = selected ? query.match(/\(([^)]+)\)/)![1].split(",") : undefined;
+  const matches = objects.filter((object) => !ids || ids.includes(object.id));
+  const values = matches.slice(startAt, startAt + 100);
+  returnedIds.push(...values.map((object) => object.id));
+  return structuredClone({ startAt, maxResults: 100, total: matches.length, isLast: startAt + values.length >= matches.length, values });
+};
+assetsApi.getObject = async (id) => {
+  requestedIds.push(id);
+  throw new Error("Export must not request asset details");
 };
 fileApi.saveCsv = async (path, content) => { writes.push({ path, content }); };
 
@@ -129,12 +135,13 @@ if (params.get("mode") === "assets") {
   });
   const allColumns = params.get("attributes") === "none" ? [] : attributes;
   const visibleColumns = params.get("visible") === "none" ? [] : allColumns.slice(0, 1);
-  const selectedIds = params.get("selected") === "none" ? [] : ["2"];
+  const selectedIds = params.get("selected") === "none" ? [] : params.get("selected") === "missing" ? ["2", "3"] : ["2"];
 
   function Fixture() {
     const [open, setOpen] = useState(true);
     return (
       <>
+        <Toaster />
         <div className="w-80 p-6">
           <Select defaultValue="reference">
             <SelectTrigger data-testid="reference-trigger"><SelectValue /></SelectTrigger>

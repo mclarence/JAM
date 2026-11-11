@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/primitives";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { exportFileName, saveAssetExport } from "@/lib/assetExport";
+import { exportFileName, saveAssetExport, skippedExportWarning } from "@/lib/assetExport";
 import { notify } from "@/lib/notify";
 
 interface Props {
@@ -26,11 +26,18 @@ export function ExportAssetsDialog(props: Props) {
   const [busy, setBusy] = useState(false);
   const [count, setCount] = useState(0);
   const [error, setError] = useState<string>();
+  const [warning, setWarning] = useState<string>();
+  const [awaitingSave, setAwaitingSave] = useState(false);
+  const confirmSave = useRef<((proceed: boolean) => void) | null>(null);
   const controller = useRef<AbortController | null>(null);
-  useEffect(() => () => controller.current?.abort(), []);
+  useEffect(() => () => {
+    controller.current?.abort();
+    confirmSave.current?.(false);
+  }, []);
 
   const close = () => {
     controller.current?.abort();
+    confirmSave.current?.(false);
     props.onClose();
   };
   const run = async () => {
@@ -39,6 +46,7 @@ export function ExportAssetsDialog(props: Props) {
     setBusy(true);
     setCount(0);
     setError(undefined);
+    setWarning(undefined);
     try {
       const saved = await saveAssetExport({
         aql: props.aql,
@@ -49,12 +57,24 @@ export function ExportAssetsDialog(props: Props) {
         signal: operation.signal,
         onProgress: setCount,
       }, exportFileName(props.typeName), (defaultPath) =>
-        save({ defaultPath, filters: [{ name: "CSV", extensions: ["csv"] }] }));
+        save({ defaultPath, filters: [{ name: "CSV", extensions: ["csv"] }] }), async (summary) => {
+          if (!summary.skippedIds.length) return true;
+          setWarning(skippedExportWarning(summary));
+          setAwaitingSave(true);
+          const proceed = await new Promise<boolean>((resolve) => { confirmSave.current = resolve; });
+          confirmSave.current = null;
+          setAwaitingSave(false);
+          return proceed;
+        });
       if (operation.signal.aborted) return;
       if (saved !== null) {
-        notify.success(`Exported ${saved.toLocaleString()} assets`);
+        if (saved.skippedIds.length) {
+          notify.info(`Exported ${saved.count.toLocaleString()} assets. ${skippedExportWarning(saved)}`);
+        } else {
+          notify.success(`Exported ${saved.count.toLocaleString()} assets`);
+        }
         props.onClose();
-      }
+      } else setWarning(undefined);
     } catch (e) {
       if (operation.signal.aborted) return;
       setError(e instanceof Error ? e.message : "Export failed. Try again.");
@@ -98,15 +118,17 @@ export function ExportAssetsDialog(props: Props) {
         )}
         <p className="text-xs text-muted-foreground">
           Text is preserved exactly. Spreadsheets may execute formula-like text; only open trusted data.
-          Assets may change while exporting. A file is offered only after every requested asset is read successfully.
+          Both export scopes use Jira AQL search data and may reflect search-index lag.
+          All search pages must succeed. Missing selected assets are skipped with a warning.
         </p>
         {busy && <p role="status" aria-live="polite" className="text-sm">Prepared {count.toLocaleString()} assets…</p>}
         {error && <p role="alert" className="text-sm text-destructive">{error}</p>}
+        {warning && <p role="alert" className="text-sm">{warning}</p>}
         <div className="flex justify-end gap-2">
           <Button variant="outline" onClick={close}>{busy ? "Cancel export" : "Cancel"}</Button>
-          <Button disabled={busy || !(columns === "visible" ? props.visibleColumns : props.allColumns).length}
-            onClick={() => void run()}>
-            {busy && <Loader2 className="animate-spin" />}{error ? "Retry export" : "Export CSV"}
+          <Button disabled={(busy && !awaitingSave) || !(columns === "visible" ? props.visibleColumns : props.allColumns).length}
+            onClick={() => awaitingSave ? confirmSave.current?.(true) : void run()}>
+            {busy && !awaitingSave && <Loader2 className="animate-spin" />}{awaitingSave ? "Continue to save" : error ? "Retry export" : "Export CSV"}
           </Button>
         </div>
       </DialogContent>

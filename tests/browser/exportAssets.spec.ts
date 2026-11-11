@@ -56,8 +56,8 @@ test("defaults export the selected assets and visible columns", async ({ page })
     writes: window.exportFixture.writes,
     saveDialogCount: window.exportFixture.saveDialogs.length,
   }))).toEqual({
-    searches: [],
-    requestedIds: ["2"],
+    searches: [{ query: "objectId IN (2) ORDER BY Key ASC", startAt: 0 }],
+    requestedIds: [],
     writes: [{ path: "/fixture/assets.csv", content: "\uFEFFName\r\nDevice 2\r\n" }],
     saveDialogCount: 1,
   });
@@ -86,7 +86,7 @@ test("pointer and keyboard choices export all matching assets and attributes", a
     writes: window.exportFixture.writes,
   }))).toEqual({
     searches: [{ query: 'objectTypeId = 1 ORDER BY "Name" ASC', startAt: 0 }],
-    requestedIds: ["1", "2"],
+    requestedIds: [],
     writes: [{ path: "/fixture/assets.csv", content: "\uFEFFName,Room\r\nDevice 1,Lab\r\nDevice 2,Office\r\n" }],
   });
 });
@@ -105,8 +105,8 @@ test("selected assets can be exported with all attributes", async ({ page }) => 
     requestedIds: window.exportFixture.requestedIds,
     writes: window.exportFixture.writes,
   }))).toEqual({
-    searches: [],
-    requestedIds: ["2"],
+    searches: [{ query: "objectId IN (2) ORDER BY Key ASC", startAt: 0 }],
+    requestedIds: [],
     writes: [{ path: "/fixture/assets.csv", content: "\uFEFFName,Room\r\nDevice 2,Office\r\n" }],
   });
 });
@@ -122,7 +122,7 @@ test("all matching assets can be exported with visible columns only", async ({ p
     writes: window.exportFixture.writes,
   }))).toEqual({
     searches: [{ query: 'objectTypeId = 1 ORDER BY "Name" ASC', startAt: 0 }],
-    requestedIds: ["1", "2"],
+    requestedIds: [],
     writes: [{ path: "/fixture/assets.csv", content: "\uFEFFName\r\nDevice 1\r\nDevice 2\r\n" }],
   });
 });
@@ -173,7 +173,7 @@ test("both dropdowns stay disabled during an export and cancellation prevents sa
     returnedIds: window.exportFixture.returnedIds,
     saveDialogCount: window.exportFixture.saveDialogs.length,
     writes: window.exportFixture.writes,
-  }))).toEqual({ requestedIds: ["2"], returnedIds: ["2"], saveDialogCount: 0, writes: [] });
+  }))).toEqual({ requestedIds: [], returnedIds: ["2"], saveDialogCount: 0, writes: [] });
 });
 
 test("a failed export re-enables the controls and can be retried", async ({ page }) => {
@@ -191,7 +191,7 @@ test("a failed export re-enables the controls and can be retried", async ({ page
     requestedIds: window.exportFixture.requestedIds,
     writes: window.exportFixture.writes,
   }))).toEqual({
-    requestedIds: ["2", "2"],
+    requestedIds: [],
     writes: [{ path: "/fixture/assets.csv", content: "\uFEFFName,Room\r\nDevice 2,Office\r\n" }],
   });
 });
@@ -204,6 +204,35 @@ test("cancelling the save dialog leaves the export choices unchanged", async ({ 
   await expect(dialog(page).getByRole("button", { name: "Export CSV" })).toBeEnabled();
   await expect(field(page, "Assets")).toHaveText("Selected assets (1)");
   await expect(field(page, "Attributes")).toHaveText("Visible columns (1)");
+  expect(await page.evaluate(() => window.exportFixture.writes)).toEqual([]);
+});
+
+test("missing selections show a warning before saving and completion retains skipped counts", async ({ page }) => {
+  await page.goto(`${fixture}?selected=missing`);
+  await dialog(page).getByRole("button", { name: "Export CSV" }).click();
+  await expect(dialog(page).getByRole("alert")).toHaveText("Skipped 1 selected assets: 1 not returned by search; 0 matched deletion markers.");
+  expect(await page.evaluate(() => window.exportFixture.saveDialogs.length)).toBe(0);
+  await dialog(page).getByRole("button", { name: "Continue to save" }).click();
+  await expect(dialog(page)).toHaveCount(0);
+  await expect(page.getByText("Exported 1 assets. Skipped 1 selected assets: 1 not returned by search; 0 matched deletion markers.", { exact: true })).toBeVisible();
+  expect(await page.evaluate(() => ({
+    requestedIds: window.exportFixture.requestedIds,
+    writes: window.exportFixture.writes,
+  }))).toEqual({ requestedIds: [], writes: [{ path: "/fixture/assets.csv", content: "\uFEFFName\r\nDevice 2\r\n" }] });
+});
+
+test("save cancellation clears skipped warnings and retry requires a fresh confirmation", async ({ page }) => {
+  await page.goto(`${fixture}?selected=missing`);
+  await page.evaluate(() => window.exportFixture.setSavePath(null));
+  await dialog(page).getByRole("button", { name: "Export CSV" }).click();
+  await expect(dialog(page).getByRole("alert")).toContainText("Skipped 1");
+  await dialog(page).getByRole("button", { name: "Continue to save" }).click();
+  await expect(dialog(page).getByRole("alert")).toHaveCount(0);
+  await expect(dialog(page).getByRole("button", { name: "Export CSV" })).toBeEnabled();
+  await dialog(page).getByRole("button", { name: "Export CSV" }).click();
+  await expect(dialog(page).getByRole("alert")).toContainText("Skipped 1");
+  expect(await page.evaluate(() => window.exportFixture.saveDialogs.length)).toBe(1);
+  await dialog(page).getByRole("button", { name: "Cancel export" }).click();
   expect(await page.evaluate(() => window.exportFixture.writes)).toEqual([]);
 });
 

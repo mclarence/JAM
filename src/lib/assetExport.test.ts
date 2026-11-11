@@ -27,30 +27,32 @@ beforeEach(() => {
   useSettings.setState({ deletions: {} });
   vi.spyOn(connectionApi, "get").mockResolvedValue(connection);
   vi.spyOn(assetsApi, "getObject").mockImplementation(async (id) => object(id));
+  vi.spyOn(assetsApi, "searchExportObjects").mockResolvedValue(page(["1"]));
 });
 afterEach(() => { useSettings.setState({ deletions: {} }); vi.restoreAllMocks(); });
 
 describe("deleted asset exports", () => {
-  it.each([true, false])("skips assets marked deleted after selection/search and advances past a wholly deleted page (selected=%s)", async (selected) => {
+  it.each([true, false])("skips returned hidden deletion markers and advances past a wholly deleted page (selected=%s)", async (selected) => {
     useSettings.getState().setDeletion(deletionScope(connection, "type"), {
-      method: "permanent", marker: { attributeId: "name", attributeName: "Name", value: { raw: "DELETED", display: "" } },
+      method: "permanent", marker: { attributeId: "hidden", attributeName: "Hidden marker", value: { raw: "DELETED", display: "" } },
     });
-    // Selection and AQL pages still contain the original asset; only fresh detail reads see deletion.
-    vi.mocked(assetsApi.getObject).mockImplementation(async (id) => id === "1" ? {
-      ...object(id),
-      attributes: [{ objectTypeAttributeId: "name", objectAttributeValues: [{ value: "DELETED" }] }],
-    } : object(id));
-    const search = vi.spyOn(assetsApi, "searchObjects")
-      .mockResolvedValueOnce(page(["1"], 0, false))
+    const deleted = {
+      ...object("1"),
+      attributes: [...object("1").attributes, { objectTypeAttributeId: "hidden", objectAttributeValues: [{ value: "DELETED" }] }],
+    };
+    const search = vi.mocked(assetsApi.searchExportObjects)
+      .mockResolvedValueOnce({ ...page(["1"], 0, false), values: [deleted] })
       .mockResolvedValueOnce(page(["2"], 1, true));
     const result = await prepareAssetExport(input(selected ? { selectedIds: ["1", "2"] } : {}));
     expect(result.count).toBe(1);
     expect(result.csv).toContain("Asset 2");
     expect(result.csv).not.toContain("Asset 1");
     expect(result.csv).not.toContain("DELETED");
+    expect(result.skippedIds).toEqual(selected ? ["1"] : []);
+    expect(result.missingIds).toEqual([]);
     if (!selected) {
       expect(search).toHaveBeenCalledTimes(2);
-      expect(search).toHaveBeenLastCalledWith(expect.any(String), 1);
+      expect(search).toHaveBeenLastCalledWith(expect.any(String), 1, false);
     }
   });
 });
@@ -105,34 +107,78 @@ describe("CSV contract", () => {
 });
 
 describe("export reads and saving", () => {
-  it("exports more than two full API pages without a row cap", async () => {
-    const ids = Array.from({ length: 205 }, (_, i) => String(i + 1));
-    const search = vi.spyOn(assetsApi, "searchObjects").mockImplementation(async (_, start = 0) =>
+  it("exports 1,000 AQL objects in ten requests with no detail reads", async () => {
+    const ids = Array.from({ length: 1000 }, (_, i) => String(i + 1));
+    const search = vi.mocked(assetsApi.searchExportObjects).mockImplementation(async (_, start = 0) =>
       page(ids.slice(start, start + 100), start, start + 100 >= ids.length));
     const result = await prepareAssetExport(input());
-    expect(result.count).toBe(205);
-    expect(result.csv.split("\r\n")).toHaveLength(207);
-    expect(search.mock.calls.map((call) => call[1])).toEqual([0, 100, 200]);
-    expect(assetsApi.getObject).toHaveBeenCalledTimes(205);
+    expect(result.count).toBe(1000);
+    expect(result.csv.split("\r\n")).toHaveLength(1002);
+    expect(connectionApi.get).toHaveBeenCalledTimes(21);
+    expect(search.mock.calls.map((call) => call[1])).toEqual([0, 100, 200, 300, 400, 500, 600, 700, 800, 900]);
+    expect(assetsApi.getObject).not.toHaveBeenCalled();
   });
-  it("exports all pages of the frozen query and hydrates fresh objects, without duplicate rows", async () => {
-    const search = vi.spyOn(assetsApi, "searchObjects")
+  it("exports AQL attributes in server order without duplicate rows", async () => {
+    vi.mocked(assetsApi.getObject).mockResolvedValue({ ...object("1"), label: "stale detail", attributes: [] });
+    const search = vi.mocked(assetsApi.searchExportObjects)
       .mockResolvedValueOnce(page(["1", "2"], 0, "false")).mockResolvedValueOnce(page(["2", "3"], 2, "true"));
     const request = input();
     const result = await prepareAssetExport(request);
-    expect(result).toEqual({ count: 3, csv: "\uFEFFName\r\nAsset 1\r\nAsset 2\r\nAsset 3\r\n" });
-    expect(search.mock.calls).toEqual([[request.aql, 0], [request.aql, 2]]);
-    expect(assetsApi.getObject).toHaveBeenCalledTimes(3);
+    expect(result).toEqual({ count: 3, skippedIds: [], missingIds: [], csv: "\uFEFFName\r\nAsset 1\r\nAsset 2\r\nAsset 3\r\n" });
+    expect(search.mock.calls).toEqual([[request.aql, 0, false], [request.aql, 2, false]]);
+    expect(assetsApi.getObject).not.toHaveBeenCalled();
     expect(request.onProgress).toHaveBeenLastCalledWith(3);
   });
   it("reads only selected IDs in selected order, independently of filters or loaded rows", async () => {
-    const search = vi.spyOn(assetsApi, "searchObjects");
+    const search = vi.mocked(assetsApi.searchExportObjects).mockResolvedValue(page(["1", "3"]));
     expect(await prepareAssetExport(input({ selectedIds: ["3", "1", "3"] })))
-      .toEqual({ count: 2, csv: "\uFEFFName\r\nAsset 3\r\nAsset 1\r\n" });
-    expect(search).not.toHaveBeenCalled();
+      .toEqual({ count: 2, skippedIds: [], missingIds: [], csv: "\uFEFFName\r\nAsset 3\r\nAsset 1\r\n" });
+    expect(search).toHaveBeenCalledExactlyOnceWith("objectId IN (3,1) ORDER BY Key ASC", 0, true);
+    expect(assetsApi.getObject).not.toHaveBeenCalled();
+  });
+  it("batches 205 selections at 100/101 boundaries without losing precision or order", async () => {
+    const ids = Array.from({ length: 204 }, (_, i) => String(i + 1)).concat("9007199254740993");
+    const search = vi.mocked(assetsApi.searchExportObjects).mockImplementation(async (query) =>
+      page(query.match(/\(([^)]+)\)/)![1].split(",").reverse()));
+    const result = await prepareAssetExport(input({ selectedIds: [...ids, "1"] }));
+    expect(result.count).toBe(205);
+    expect(result.csv).toBe("\uFEFFName\r\n" + ids.map((id) => `Asset ${id}\r\n`).join(""));
+    expect(search).toHaveBeenCalledTimes(3);
+    expect(search.mock.calls.map(([query]) => query.match(/\(([^)]+)\)/)![1].split(",").length)).toEqual([100, 100, 5]);
+    expect(assetsApi.getObject).not.toHaveBeenCalled();
+  });
+  it("skips absent selections only after all shorter batch pages complete", async () => {
+    vi.mocked(assetsApi.searchExportObjects).mockResolvedValueOnce(page(["2"], 0, false)).mockResolvedValueOnce(page(["1"], 1));
+    const result = await prepareAssetExport(input({ selectedIds: ["3", "1", "2"] }));
+    expect(result).toEqual({ count: 2, skippedIds: ["3"], missingIds: ["3"], csv: "\uFEFFName\r\nAsset 1\r\nAsset 2\r\n" });
+  });
+  it("accepts empty attributes and omits legitimately absent optional columns", async () => {
+    vi.mocked(assetsApi.searchExportObjects).mockResolvedValue({ ...page([]), values: [{ ...object("1"), attributes: [] }] });
+    const result = await prepareAssetExport(input({ columns: [...columns, { id: "optional", name: "Optional", type: 0 }] }));
+    expect(result.csv).toBe("\uFEFFName,Optional\r\nAsset 1,\r\n");
+  });
+  it("does not offer earlier selected batches after a later batch fails", async () => {
+    vi.mocked(assetsApi.searchExportObjects).mockResolvedValueOnce(page(["1"])).mockRejectedValueOnce(new Error("offline"));
+    const choose = vi.fn();
+    const write = vi.spyOn(fileApi, "saveCsv");
+    await expect(saveAssetExport(input({ selectedIds: Array.from({ length: 101 }, (_, i) => String(i + 1)) }), "assets.csv", choose))
+      .rejects.toThrow("offline");
+    expect(choose).not.toHaveBeenCalled();
+    expect(write).not.toHaveBeenCalled();
+  });
+  it("does not offer a file for an entirely absent selection and reports the skipped count", async () => {
+    vi.mocked(assetsApi.searchExportObjects).mockResolvedValue(page([]));
+    const choose = vi.fn();
+    await expect(saveAssetExport(input({ selectedIds: ["1", "2"] }), "assets.csv", choose))
+      .rejects.toThrow("Skipped 2 selected assets: 2 not returned by search");
+    expect(choose).not.toHaveBeenCalled();
+  });
+  it.each(["", "0", "-1", "01", "1.5", "1 OR true", "1e2"])("rejects unsafe selected ID %j before searching", async (id) => {
+    await expect(prepareAssetExport(input({ selectedIds: ["1", id] }))).rejects.toThrow("numeric Jira IDs");
+    expect(assetsApi.searchExportObjects).not.toHaveBeenCalled();
   });
   it("never offers a partial file after a later-page failure", async () => {
-    vi.spyOn(assetsApi, "searchObjects").mockResolvedValueOnce(page(["1"], 0, false)).mockRejectedValueOnce(new Error("offline"));
+    vi.mocked(assetsApi.searchExportObjects).mockResolvedValueOnce(page(["1"], 0, false)).mockRejectedValueOnce(new Error("offline"));
     const choose = vi.fn();
     const write = vi.spyOn(fileApi, "saveCsv");
     await expect(saveAssetExport(input(), "assets.csv", choose)).rejects.toThrow("offline");
@@ -143,28 +189,41 @@ describe("export reads and saving", () => {
     page([], 0, false),
     page(["1"], 10, true),
   ])("rejects incomplete or nonadvancing pages", async (response) => {
-    vi.spyOn(assetsApi, "searchObjects").mockResolvedValue(response);
+    vi.mocked(assetsApi.searchExportObjects).mockResolvedValue(response);
     await expect(prepareAssetExport(input())).rejects.toThrow("incomplete export page");
   });
   it("rejects repeated pages instead of looping forever", async () => {
-    vi.spyOn(assetsApi, "searchObjects").mockResolvedValueOnce(page(["1"], 0, false)).mockResolvedValueOnce(page(["1"], 1, false));
+    vi.mocked(assetsApi.searchExportObjects).mockResolvedValueOnce(page(["1"], 0, false)).mockResolvedValueOnce(page(["1"], 1, false));
     await expect(prepareAssetExport(input())).rejects.toThrow("stopped making progress");
   });
-  it.each(["missing", "incomplete", "mismatched", "wrong type"])("fails the entire selected export for a %s object", async (kind) => {
-    const get = vi.mocked(assetsApi.getObject);
-    if (kind === "missing") get.mockRejectedValue(new Error("not found"));
+  it.each(["failed", "incomplete", "mismatched", "wrong type"])("fails the entire selected export for a %s response", async (kind) => {
+    const get = vi.mocked(assetsApi.searchExportObjects);
+    if (kind === "failed") get.mockRejectedValue(new Error("not found"));
     if (kind === "incomplete") {
       const partial = object("1");
       Reflect.deleteProperty(partial, "attributes");
-      get.mockResolvedValue(partial);
+      get.mockResolvedValue({ ...page([]), values: [partial] });
     }
-    if (kind === "mismatched") get.mockResolvedValue(object("2"));
-    if (kind === "wrong type") get.mockResolvedValue({ ...object("1"), objectType: { id: "other", name: "Other", objectSchemaId: "schema" } });
-    await expect(prepareAssetExport(input({ selectedIds: ["1"] }))).rejects.toThrow();
+    if (kind === "mismatched") get.mockResolvedValue(page(["2"]));
+    if (kind === "wrong type") get.mockResolvedValue({ ...page([]), values: [{ ...object("1"), objectType: { id: "other", name: "Other", objectSchemaId: "schema" } }] });
+    const choose = vi.fn();
+    await expect(saveAssetExport(input({ selectedIds: ["1"] }), "assets.csv", choose)).rejects.toThrow();
+    expect(choose).not.toHaveBeenCalled();
+  });
+  it("rejects wrong-type all-results objects even if they match a deletion marker", async () => {
+    useSettings.getState().setDeletion(deletionScope(connection, "other"), {
+      method: "permanent", marker: { attributeId: "name", attributeName: "Name", value: { raw: "Asset 1", display: "" } },
+    });
+    vi.mocked(assetsApi.searchExportObjects).mockResolvedValue({
+      ...page([]), values: [{ ...object("1"), objectType: { id: "other", name: "Other", objectSchemaId: "schema" } }],
+    });
+    const choose = vi.fn();
+    await expect(saveAssetExport(input(), "assets.csv", choose)).rejects.toThrow("object type");
+    expect(choose).not.toHaveBeenCalled();
   });
   it("rejects empty results and no columns", async () => {
-    vi.spyOn(assetsApi, "searchObjects").mockResolvedValue(page([]));
-    await expect(prepareAssetExport(input())).rejects.toThrow("No assets match");
+    vi.mocked(assetsApi.searchExportObjects).mockResolvedValue(page([]));
+    await expect(prepareAssetExport(input())).rejects.toThrow("No exportable assets");
     await expect(prepareAssetExport(input({ columns: [] }))).rejects.toThrow("at least one column");
   });
   it("stops cancellation before any request", async () => {
@@ -175,14 +234,15 @@ describe("export reads and saving", () => {
   });
   it("discards a late response and never starts another request after cancellation", async () => {
     const abort = new AbortController();
-    vi.mocked(assetsApi.getObject).mockImplementation(async () => { abort.abort(); return object("1"); });
+    vi.mocked(assetsApi.searchExportObjects).mockImplementation(async () => { abort.abort(); return page(["1"]); });
     await expect(prepareAssetExport(input({ selectedIds: ["1", "2"], signal: abort.signal }))).rejects.toThrow();
-    expect(assetsApi.getObject).toHaveBeenCalledTimes(1);
+    expect(assetsApi.searchExportObjects).toHaveBeenCalledTimes(1);
+    expect(assetsApi.getObject).not.toHaveBeenCalled();
   });
   it("discards a response from a changed connection", async () => {
-    vi.mocked(assetsApi.getObject).mockImplementation(async () => {
+    vi.mocked(assetsApi.searchExportObjects).mockImplementation(async () => {
       vi.mocked(connectionApi.get).mockResolvedValue({ ...connection, workspaceId: "other" });
-      return object("1");
+      return page(["1"]);
     });
     await expect(prepareAssetExport(input({ selectedIds: ["1"] }))).rejects.toThrow("connection changed");
   });
@@ -211,7 +271,19 @@ describe("export reads and saving", () => {
   it("reports write failures and returns counts only after successful writing", async () => {
     const write = vi.spyOn(fileApi, "saveCsv").mockRejectedValueOnce(new Error("disk full")).mockResolvedValueOnce(undefined);
     await expect(saveAssetExport(input({ selectedIds: ["1"] }), "assets.csv", async () => "/tmp/assets.csv")).rejects.toThrow("disk full");
-    expect(await saveAssetExport(input({ selectedIds: ["1"] }), "assets.csv", async () => "/tmp/assets.csv")).toBe(1);
+    expect(await saveAssetExport(input({ selectedIds: ["1"] }), "assets.csv", async () => "/tmp/assets.csv")).toEqual({ count: 1, skippedIds: [], missingIds: [] });
     expect(write).toHaveBeenLastCalledWith("/tmp/assets.csv", "\uFEFFName\r\nAsset 1\r\n");
+  });
+  it("passes skipped information before choosing a path and through successful saving", async () => {
+    vi.spyOn(fileApi, "saveCsv").mockResolvedValue(undefined);
+    const choose = vi.fn().mockResolvedValue("/fixture/assets.csv");
+    const before = vi.fn(async (summary) => {
+      expect(summary.skippedIds).toEqual(["2"]);
+      expect(choose).not.toHaveBeenCalled();
+      return true;
+    });
+    expect(await saveAssetExport(input({ selectedIds: ["1", "2"] }), "assets.csv", choose, before))
+      .toEqual({ count: 1, skippedIds: ["2"], missingIds: ["2"] });
+    expect(before).toHaveBeenCalledOnce();
   });
 });

@@ -51,6 +51,15 @@ export const assetsApi = {
       body: { qlQuery: await visibleQuery(qlQuery) },
     }),
 
+  searchExportObjects: async (qlQuery: string, startAt = 0, selected = false): Promise<AqlResult> => {
+    const page = await assetsRequest<unknown>("POST", "/object/aql", {
+      query: { startAt, maxResults: PAGE_SIZE, includeAttributes: true },
+      body: { qlQuery: selected ? qlQuery : await visibleQuery(qlQuery) },
+    });
+    validateExportPage(page, startAt);
+    return page;
+  },
+
   countObjects: async (qlQuery: string) =>
     (await assetsRequest<{ totalCount: number }>("POST", "/object/aql/totalcount", { body: { qlQuery: await visibleQuery(qlQuery) } })).totalCount,
 
@@ -72,6 +81,40 @@ export const assetsApi = {
   listStatusTypes: (objectSchemaId?: string) =>
     assetsRequest<StatusType[]>("GET", "/config/statustype", { query: { objectSchemaId } }),
 };
+
+export function selectedExportQuery(ids: string[]): string {
+  if (!ids.length || ids.length > PAGE_SIZE || ids.some((id) => typeof id !== "string" || !/^[1-9]\d*$/.test(id))) {
+    throw new Error("Selected asset IDs must be positive numeric Jira IDs (at most 100 per batch).");
+  }
+  // Keep IDs as strings: Jira IDs can exceed JavaScript's safe integer range.
+  return `objectId IN (${ids.join(",")}) ORDER BY Key ASC`;
+}
+
+export function validateExportPage(value: unknown, startAt: number): asserts value is AqlResult {
+  const record = (item: unknown): item is Record<string, unknown> => !!item && typeof item === "object" && !Array.isArray(item);
+  const attributeValue = (item: unknown) => record(item)
+    && ["value", "displayValue", "searchValue"].every((key) => item[key] == null || typeof item[key] === "string")
+    && [["referencedObject", "label"], ["status", "name"], ["user", "displayName"], ["group", "name"]].every(([key, label]) =>
+      item[key] == null || (record(item[key]) && (item[key][label] == null || typeof item[key][label] === "string")));
+  if (!record(value) || value.startAt !== startAt || !Number.isSafeInteger(value.startAt)
+    || !Number.isSafeInteger(value.maxResults) || Number(value.maxResults) <= 0 || Number(value.maxResults) > PAGE_SIZE
+    || ![true, false, "true", "false"].includes(value.isLast as boolean | string)
+    || (value.total !== undefined && (!Number.isSafeInteger(value.total) || Number(value.total) < 0))
+    || !Array.isArray(value.values) || value.values.length > Number(value.maxResults)
+    || (!value.values.length && value.isLast !== true && value.isLast !== "true")) {
+    throw new Error("The server returned an incomplete export page. Retry the export.");
+  }
+  for (const object of value.values) {
+    if (!record(object) || typeof object.id !== "string" || !/^[1-9]\d*$/.test(object.id)
+      || !record(object.objectType) || typeof object.objectType.id !== "string"
+      || !["objectKey", "label", "created", "updated"].every((key) => typeof object[key] === "string")
+      || !Array.isArray(object.attributes) || !object.attributes.every((attribute: unknown) =>
+        record(attribute) && typeof attribute.objectTypeAttributeId === "string"
+        && Array.isArray(attribute.objectAttributeValues) && attribute.objectAttributeValues.every(attributeValue))) {
+      throw new Error("The export response did not include complete asset attributes.");
+    }
+  }
+}
 
 export async function getCompleteObject(id: string): Promise<AssetObject> {
   const object = await assetsApi.getObject(id);
