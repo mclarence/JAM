@@ -4,6 +4,7 @@
     "selection": "selection",
     "theme": "theme",
     "filter": "filters",
+    "filterOrder": "filters",
     "columns": "columns",
     "assetTag": "assetTags",
     "referenceDisplay": "referenceDisplay",

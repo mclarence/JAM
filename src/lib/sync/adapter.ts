@@ -33,11 +33,11 @@ export const DESKTOP_SCOPES = ["shared", "desktop"] as const;
 const WORKSPACE_KINDS = new Set(["columns", "assetTag", "referenceDisplay", "scanConfig", "scanPreset", "columnSizes", "reportSource", "report"]);
 const DESKTOP_WORKSPACE_KINDS = new Set(["columnSizes", "reportSource", "report"]);
 const GLOBAL_KINDS = new Set([
-  "shared|theme", "shared|filter", "shared|statusColor", "shared|rule", "shared|ruleOrder", "shared|deletion", "shared|scanSound",
+  "shared|theme", "shared|filter", "shared|filterOrder", "shared|statusColor", "shared|rule", "shared|ruleOrder", "shared|deletion", "shared|scanSound",
   "desktop|template", "desktop|defaultTemplate", "desktop|labelDefaults", "desktop|updater",
 ]);
 /** Application order inside one batch of changes, so that dependent records land after what they refer to. */
-const APPLY_ORDER = ["rule", "ruleOrder", "columns", "columnSizes", "template", "defaultTemplate", "reportSource", "report"];
+const APPLY_ORDER = ["filter", "filterOrder", "rule", "ruleOrder", "columns", "columnSizes", "template", "defaultTemplate", "reportSource", "report"];
 
 const DEFAULT_LABEL = { unit: "mm", width: 62, height: 29 } as const;
 const DEFAULT_UPDATER = { channel: "stable", autoCheck: true } as const;
@@ -129,6 +129,15 @@ export function createDesktopAdapter(deps: DesktopDeps): Adapter {
     const theme = deps.theme.get();
     if (theme !== "system") put("shared", "theme", theme);
     for (const p of s.aqlPresets) put("shared", recordKey("filter", p.id), { name: p.name, aql: p.aql }, FIELDS.filter);
+    const filterOrder = s.aqlPresets.map((p) => p.id);
+    const filterSnapshot = deps.snapshot(rid("shared", "filterOrder"));
+    if (isStrArray(filterSnapshot)) {
+      const mine = filterOrder.filter((id) => filterSnapshot.includes(id));
+      const theirs = filterSnapshot.filter((id) => filterOrder.includes(id));
+      put("shared", "filterOrder", jsonEqual(mine, theirs) ? filterSnapshot : filterOrder);
+    } else if (filterOrder.length > 0) {
+      put("shared", "filterOrder", filterOrder);
+    }
 
     const colorNames = new Set([...Object.keys(DEFAULT_STATUS_COLORS), ...Object.keys(s.statusColors)]);
     for (const name of colorNames) {
@@ -272,6 +281,19 @@ export function createDesktopAdapter(deps: DesktopDeps): Adapter {
           const preset = { id, name: (v as Obj).name as string, aql: (v as Obj).aql as string };
           const i = s.aqlPresets.findIndex((p) => p.id === id);
           return { aqlPresets: i < 0 ? [...rest, preset] : s.aqlPresets.map((p) => (p.id === id ? preset : p)) };
+        });
+        return { status: "applied" };
+      }
+      case "shared|filterOrder": {
+        check(parts.length === 1);
+        if (v === undefined) return { status: "applied" };
+        if (!isStrArray(v) || new Set(v).size !== v.length) throw new Invalid("The synced filter order is malformed.");
+        useSettings.setState((s) => {
+          const byId = new Map(s.aqlPresets.map((p) => [p.id, p]));
+          return { aqlPresets: [
+            ...v.flatMap((id) => byId.get(id) ?? []),
+            ...s.aqlPresets.filter((p) => !v.includes(p.id)),
+          ] };
         });
         return { status: "applied" };
       }

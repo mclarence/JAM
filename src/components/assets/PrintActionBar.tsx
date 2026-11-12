@@ -1,9 +1,11 @@
 import { useState } from "react";
-import { ChevronDown, Download, Eye, Loader2, Pencil, Printer, Star, Trash2, X } from "lucide-react";
+import { BookmarkPlus, ChevronDown, Download, Eye, Loader2, Pencil, Printer, Star, Trash2, X } from "lucide-react";
 import type { AssetObject, ObjectTypeAttribute } from "@/api/types";
 import { PrintDialog } from "@/components/labels/PrintDialog";
 import { printLabels } from "@/components/labels/print";
 import { Button } from "@/components/ui/button";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -12,6 +14,8 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/overlays";
+import { Label } from "@/components/ui/primitives";
+import { selectedKeysToAql } from "@/lib/aql";
 import { notify } from "@/lib/notify";
 import { useSettings } from "@/store/settings";
 import { useTemplates } from "@/store/templates";
@@ -45,12 +49,18 @@ export function PrintActionBar({
 }) {
   const { templates, defaultTemplateId } = useTemplates();
   const output = useSettings((s) => s.labelDefaults.output);
+  const savePreset = useSettings((s) => s.savePreset);
   const navigate = useUi((s) => s.navigate);
   const [busy, setBusy] = useState(false);
   const [preview, setPreview] = useState<string | null>(null);
+  const [savingPreset, setSavingPreset] = useState(false);
+  const [presetName, setPresetName] = useState("");
 
   const defaultTemplate = templates.find((t) => t.id === defaultTemplateId) ?? templates[0];
   const count = selected.length;
+  const selectedKeys = selected.map((object) => object.objectKey);
+  const selectedAql = selectedKeysToAql(selectedKeys);
+  const canSavePreset = !!selectedAql && selectedKeys.every(Boolean);
 
   const print = async (templateId: string) => {
     const template = templates.find((t) => t.id === templateId);
@@ -86,6 +96,16 @@ export function PrintActionBar({
 
         <Button variant="outline" onClick={onExport} disabled={exportDisabled}>
           <Download /> Export selected
+        </Button>
+        <Button
+          variant="outline"
+          onClick={() => {
+            setPresetName("");
+            setSavingPreset(true);
+          }}
+          disabled={!canSavePreset || selectingAll}
+        >
+          <BookmarkPlus /> Save selected as filter
         </Button>
         <Button variant="outline" onClick={onBatchEdit}>
           <Pencil /> Update {count}
@@ -136,6 +156,40 @@ export function PrintActionBar({
         attributes={attributes}
         templateId={preview}
       />
+      <Dialog open={savingPreset} onOpenChange={setSavingPreset}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Save selected assets as filter</DialogTitle>
+            <DialogDescription>This preset matches the selected assets by their keys.</DialogDescription>
+          </DialogHeader>
+          <form
+            className="grid gap-4"
+            onSubmit={(event) => {
+              event.preventDefault();
+              const name = presetName.trim();
+              if (!name || !selectedAql || !selectedKeys.every(Boolean)) return;
+              savePreset(name, selectedAql);
+              setPresetName("");
+              setSavingPreset(false);
+            }}
+          >
+            <div className="grid gap-2">
+              <Label htmlFor="selected-filter-name">Name</Label>
+              <Input
+                id="selected-filter-name"
+                autoFocus
+                value={presetName}
+                onChange={(event) => setPresetName(event.target.value)}
+              />
+            </div>
+            <DialogFooter>
+              <Button type="submit" disabled={!presetName.trim() || !canSavePreset || selectingAll}>
+                Save
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
     </>
   );
 }

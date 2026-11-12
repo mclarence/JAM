@@ -1,10 +1,16 @@
 import { useEffect, useRef, useState } from "react";
-import { BookmarkPlus, Code2, Filter, ListFilter, Plus, Trash2, X } from "lucide-react";
+import { DndContext, MouseSensor, TouchSensor, useDraggable, useDroppable, useSensor, useSensors, type DragEndEvent } from "@dnd-kit/core";
+import { ArrowLeft, ArrowRight, BookmarkPlus, Code2, Filter, ListFilter, MoreHorizontal, Plus, Trash2, X } from "lucide-react";
 import type { ObjectTypeAttribute } from "@/api/types";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input, Textarea } from "@/components/ui/input";
 import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
   Popover,
   PopoverContent,
   PopoverTrigger,
@@ -13,7 +19,7 @@ import { Label } from "@/components/ui/primitives";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { FILTER_OPERATORS, isTextarea, listFilterAttributes, listFilterToAql, parseListFilter, rulesToAql, SEARCH_KEY, type FilterOperator, type FilterRule } from "@/lib/aql";
 import { cn } from "@/lib/utils";
-import { useSettings } from "@/store/settings";
+import { useSettings, type AqlPreset } from "@/store/settings";
 import { useUi } from "@/store/ui";
 
 export function FilterBar({ attributes, error }: { attributes: ObjectTypeAttribute[]; error?: string | null }) {
@@ -236,59 +242,107 @@ function FilterBuilder({ attributes, onApply }: { attributes: ObjectTypeAttribut
   );
 }
 
+function PresetChip({ preset, active, earlierId, laterId, onApply }: {
+  preset: AqlPreset;
+  active: boolean;
+  earlierId?: string;
+  laterId?: string;
+  onApply: (aql: string) => void;
+}) {
+  const { deletePreset, movePreset } = useSettings();
+  const drag = useDraggable({ id: preset.id });
+  const drop = useDroppable({ id: preset.id });
+  return (
+    <div
+      ref={(element) => { drag.setNodeRef(element); drop.setNodeRef(element); }}
+      data-preset-id={preset.id}
+      style={{ transform: drag.transform ? `translate3d(${drag.transform.x}px, 0, 0)` : undefined }}
+      className={cn(
+        "relative flex h-7 shrink-0 items-center rounded-full border text-xs transition-colors",
+        active ? "border-primary bg-primary text-primary-foreground" : "bg-background hover:bg-accent",
+        drag.isDragging && "z-20 opacity-80 shadow-md",
+        drop.isOver && !drag.isDragging && "ring-2 ring-primary",
+      )}
+    >
+      <button
+        ref={drag.setActivatorNodeRef}
+        {...drag.attributes}
+        {...drag.listeners}
+        type="button"
+        title={preset.aql}
+        aria-pressed={active}
+        className="max-w-48 cursor-grab truncate py-1 pl-3 pr-1 active:cursor-grabbing"
+        onClick={() => onApply(active ? "" : preset.aql)}
+      >
+        {preset.name}
+      </button>
+      <DropdownMenu>
+        <DropdownMenuTrigger asChild>
+          <button
+            type="button"
+            aria-label={`Actions for preset ${preset.name}`}
+            className="flex h-full shrink-0 items-center rounded-r-full pl-1 pr-2 opacity-70 hover:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          >
+            <MoreHorizontal className="size-3" />
+          </button>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="end">
+          <DropdownMenuItem disabled={!earlierId} onSelect={() => { if (earlierId) movePreset(preset.id, earlierId); }}>
+            <ArrowLeft /> Move earlier
+          </DropdownMenuItem>
+          <DropdownMenuItem disabled={!laterId} onSelect={() => { if (laterId) movePreset(preset.id, laterId); }}>
+            <ArrowRight /> Move later
+          </DropdownMenuItem>
+          <DropdownMenuSeparator />
+          <DropdownMenuItem className="text-destructive" onSelect={() => deletePreset(preset.id)}>
+            <Trash2 /> Delete
+          </DropdownMenuItem>
+        </DropdownMenuContent>
+      </DropdownMenu>
+    </div>
+  );
+}
+
 function Presets({ current, onApply }: { current: string; onApply: (aql: string) => void }) {
-  const { aqlPresets, savePreset, deletePreset } = useSettings();
+  const { aqlPresets, savePreset, movePreset } = useSettings();
   const [saving, setSaving] = useState(false);
   const [name, setName] = useState("");
 
   const normalized = current.trim();
+  const sensors = useSensors(
+    useSensor(MouseSensor, { activationConstraint: { distance: 6 } }),
+    useSensor(TouchSensor, { activationConstraint: { delay: 250, tolerance: 8 } }),
+  );
+  const onDragEnd = ({ active, over }: DragEndEvent) => {
+    if (over && typeof active.id === "string" && typeof over.id === "string") movePreset(active.id, over.id);
+  };
 
   return (
     <>
-      <div className="flex items-center gap-2 overflow-x-auto pb-1">
-        <Button
-          variant="outline"
-          size="sm"
-          className="h-7 shrink-0 rounded-full px-3 text-xs"
-          disabled={!normalized}
-          onClick={() => setSaving(true)}
-        >
-          <BookmarkPlus /> Save filter
-        </Button>
-        {aqlPresets.map((p) => {
-          const active = !!normalized && p.aql.trim() === normalized;
-          return (
-            <div
-              key={p.id}
-              className={cn(
-                "group flex h-7 shrink-0 items-center rounded-full border text-xs transition-colors",
-                active ? "border-primary bg-primary text-primary-foreground" : "bg-background hover:bg-accent",
-              )}
-            >
-              <button
-                type="button"
-                title={p.aql}
-                aria-pressed={active}
-                className="max-w-48 truncate py-1 pl-3 pr-2 group-hover:pr-1"
-                onClick={() => onApply(active ? "" : p.aql)}
-              >
-                {p.name}
-              </button>
-              <button
-                type="button"
-                aria-label={`Delete preset ${p.name}`}
-                className="hidden pr-2 opacity-70 hover:opacity-100 group-hover:block"
-                onClick={() => deletePreset(p.id)}
-              >
-                <X className="size-3" />
-              </button>
-            </div>
-          );
-        })}
-        {aqlPresets.length === 0 && (
-          <span className="text-xs text-muted-foreground">Saved filters appear here as one-click chips.</span>
-        )}
-      </div>
+      <DndContext sensors={sensors} onDragEnd={onDragEnd} autoScroll={{ threshold: { x: 0.2, y: 0 } }}
+        accessibility={{ screenReaderInstructions: { draggable: "Drag to reorder this preset, or tab to its actions menu for Move earlier and Move later." } }}>
+        <div className="flex items-center gap-2 overflow-x-auto pb-1">
+          <Button
+            variant="outline"
+            size="sm"
+            className="h-7 shrink-0 rounded-full px-3 text-xs"
+            disabled={!normalized}
+            onClick={() => setSaving(true)}
+          >
+            <BookmarkPlus /> Save filter
+          </Button>
+          {aqlPresets.map((p, index) => {
+            const active = !!normalized && p.aql.trim() === normalized;
+            return (
+              <PresetChip key={p.id} preset={p} active={active} earlierId={aqlPresets[index - 1]?.id}
+                laterId={aqlPresets[index + 1]?.id} onApply={onApply} />
+            );
+          })}
+          {aqlPresets.length === 0 && (
+            <span className="text-xs text-muted-foreground">Saved filters appear here as one-click chips.</span>
+          )}
+        </div>
+      </DndContext>
 
       <Dialog open={saving} onOpenChange={setSaving}>
         <DialogContent>

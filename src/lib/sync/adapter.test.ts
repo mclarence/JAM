@@ -56,6 +56,89 @@ describe("desktop sync adapter", () => {
     expect([...adapter().project().keys()]).toEqual(["shared|connection"]);
   });
 
+  it("applies filter records before ordering and preserves unlisted local presets", () => {
+    useSettings.setState({ aqlPresets: [{ id: "local", name: "Local", aql: "local" }] });
+    const a = adapter();
+    expect(a.apply(changes({
+      "shared|filterOrder": ["f2", "missing", "f1"],
+      "shared|filter:f1": { name: "First", aql: "first" },
+      "shared|filter:f2": { name: "Second", aql: "second" },
+    }))).toEqual([{ status: "applied" }, { status: "applied" }, { status: "applied" }]);
+    expect(useSettings.getState().aqlPresets.map((p) => p.id)).toEqual(["f2", "f1", "local"]);
+    a.apply([{ rid: "shared|filterOrder", value: undefined, parents: [] }]);
+    expect(useSettings.getState().aqlPresets.map((p) => p.id)).toEqual(["f2", "f1", "local"]);
+  });
+
+  it.each<{ value: Json }>([{ value: ["f1", "f1"] }, { value: ["f1", 2] }, { value: { order: ["f1"] } }])("rejects malformed filter ordering without mutation: %j", ({ value }) => {
+    useSettings.setState({ aqlPresets: [{ id: "f1", name: "First", aql: "first" }] });
+    const before = useSettings.getState().aqlPresets;
+    const [result] = adapter().apply([{ rid: "shared|filterOrder", value, parents: [] }]);
+    expect(result.status).toBe("invalid");
+    expect(useSettings.getState().aqlPresets).toBe(before);
+  });
+
+  it("retains the filter snapshot for membership changes, but projects a real reorder", () => {
+    useSettings.setState({ aqlPresets: ["f2", "f1", "local"].map((id) => ({ id, name: id, aql: id })) });
+    snapshots.set("shared|filterOrder", ["f2", "remote", "f1"]);
+    const a = adapter();
+    expect(a.project().get("shared|filterOrder")).toEqual(["f2", "remote", "f1"]);
+    useSettings.getState().deletePreset("local");
+    expect(a.project().get("shared|filterOrder")).toEqual(["f2", "remote", "f1"]);
+    useSettings.getState().movePreset("f1", "f2");
+    expect(a.project().get("shared|filterOrder")).toEqual(["f1", "f2"]);
+    useSettings.setState({ aqlPresets: [] });
+    expect(a.project().get("shared|filterOrder")).toEqual(["f2", "remote", "f1"]);
+  });
+
+  it("exchanges filter order between devices without re-uploading unchanged order", async () => {
+    const batches: PulledBatch[] = [];
+    const transport: Transport = {
+      pull: async (scopes, known) => ({
+        batches: batches.filter((batch) => scopes.includes(batch.scope) && !known.includes(batch.batchId)),
+        listed: batches.filter((batch) => scopes.includes(batch.scope)).map((batch) => batch.batchId),
+        stale: false,
+      }),
+      push: async (batch) => {
+        if (!batches.some((saved) => saved.batchId === batch.batchId)) {
+          batches.push({ batchId: batch.batchId, scope: batch.scope, plaintext: JSON.stringify(batch.body) });
+        }
+      },
+    };
+    const device = (id: string, presets: ReturnType<typeof useSettings.getState>["aqlPresets"]) => {
+      const state = emptyState("g");
+      state.merged = true;
+      const a = createDesktopAdapter({
+        connection: () => connection,
+        theme: { get: () => "system", set: () => {} },
+        snapshot: (rid) => state.local[rid]?.snapshot,
+      });
+      let serial = 0;
+      return {
+        presets, state,
+        async sync() {
+          useSettings.setState({ aqlPresets: this.presets });
+          const result = await runSync(state, a, transport, {
+            deviceId: id, platform: "desktop", now: () => "", newId: () => `${id}${++serial}`.padEnd(32, "0"),
+          }, async () => {});
+          this.presets = useSettings.getState().aqlPresets;
+          return result;
+        },
+      };
+    };
+    const a = device("a", ["f2", "f1"].map((id) => ({ id, name: id, aql: id })));
+    const b = device("b", []);
+    await a.sync();
+    await b.sync();
+    expect(b.presets).toEqual(a.presets);
+    a.presets = [...a.presets].reverse();
+    expect((await a.sync()).uploaded).toBe(1);
+    const received = await b.sync();
+    expect(received.uploaded).toBe(0);
+    expect(received.conflicts).toEqual([]);
+    expect(b.presets).toEqual(a.presets);
+    expect((await b.sync()).uploaded).toBe(0);
+  });
+
   it("round-trips every canonical shared and desktop record exactly", () => {
     const a = adapter();
     const { "shared|connection": conn, ...rest } = fixture.shared;

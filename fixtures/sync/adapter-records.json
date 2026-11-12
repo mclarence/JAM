@@ -6,6 +6,8 @@
     "shared|selection": { "cloudId": "cloud-1", "workspaceId": "ws-1", "schemaId": "7", "objectTypeId": "42" },
     "shared|theme": "dark",
     "shared|filter:f1": { "name": "Laptops", "aql": "objectType = \"Laptop\"" },
+    "shared|filter:f2": { "name": "Desktops", "aql": "objectType = \"Desktop\"" },
+    "shared|filterOrder": ["f2", "f1"],
     "shared|statusColor:active": "blue",
     "shared|statusColor:retired": null,
     "shared|statusColor:lost%20%26%20found": "red",

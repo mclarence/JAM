@@ -5,6 +5,12 @@ export function aqlString(value: string) {
   return `"${value.replace(/\\/g, "\\\\").replace(/"/g, '\\"')}"`;
 }
 
+/** Builds an AQL membership filter for selected asset keys. */
+export function selectedKeysToAql(keys: string[]) {
+  if (keys.length === 0) return null;
+  return `Key IN (${keys.map(aqlString).join(", ")})`;
+}
+
 /** Quotes an attribute name for AQL. */
 export function aqlAttr(name: string) {
   return aqlString(name);

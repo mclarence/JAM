@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { AttrType, DefaultType, type ObjectTypeAttribute } from "@/api/types";
-import { buildAssetsQuery, listFilterAttributes, listFilterToAql, parseListFilter, SEARCH_KEY } from "./aql";
+import { buildAssetsQuery, listFilterAttributes, listFilterToAql, parseListFilter, SEARCH_KEY, selectedKeysToAql } from "./aql";
 
 describe("list filters", () => {
   it("parses distinct trimmed lines without splitting commas or internal tabs", () => {
@@ -16,6 +16,11 @@ describe("list filters", () => {
     expect(listFilterToAql(SEARCH_KEY, ["DEV-1", "DEV-2"], "contains"))
       .toBe('(Key LIKE "DEV-1" OR Key LIKE "DEV-2")');
     expect(() => listFilterToAql(SEARCH_KEY, [], "exact")).toThrow();
+  });
+
+  it("builds an escaped Key membership filter and rejects an empty selection", () => {
+    expect(selectedKeysToAql(["DEV-1", 'DEV "2"\\A'])).toBe('Key IN ("DEV-1", "DEV \\"2\\"\\\\A")');
+    expect(selectedKeysToAql([])).toBeNull();
   });
 
   it("offers only visible text-like fields other than Key", () => {

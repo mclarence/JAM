@@ -45,6 +45,7 @@ interface SettingsState {
   setAssetTag: (objectTypeId: string, config: AssetTagConfig | null) => void;
   savePreset: (name: string, aql: string) => void;
   deletePreset: (id: string) => void;
+  movePreset: (id: string, targetId: string) => void;
   setLabelDefaults: (patch: Partial<SettingsState["labelDefaults"]>) => void;
   setReferenceDisplay: (objectTypeId: string, attributeId: string | null) => void;
   saveRule: (rule: Rule) => void;
@@ -95,6 +96,16 @@ export const useSettings = create<SettingsState>()(
       savePreset: (name, aql) =>
         set((s) => ({ aqlPresets: [...s.aqlPresets, { id: crypto.randomUUID(), name, aql }] })),
       deletePreset: (id) => set((s) => ({ aqlPresets: s.aqlPresets.filter((p) => p.id !== id) })),
+      movePreset: (id, targetId) =>
+        set((s) => {
+          const from = s.aqlPresets.findIndex((p) => p.id === id);
+          const to = s.aqlPresets.findIndex((p) => p.id === targetId);
+          if (from < 0 || to < 0 || from === to) return s;
+          const aqlPresets = [...s.aqlPresets];
+          const [preset] = aqlPresets.splice(from, 1);
+          aqlPresets.splice(to, 0, preset);
+          return { aqlPresets };
+        }),
       setLabelDefaults: (patch) => set((s) => ({ labelDefaults: { ...s.labelDefaults, ...patch } })),
       setReferenceDisplay: (objectTypeId, attributeId) =>
         set((s) => {

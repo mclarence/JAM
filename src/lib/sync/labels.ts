@@ -5,6 +5,7 @@ const KINDS: Record<string, string> = {
   selection: "Selected schema and object type",
   theme: "Theme",
   filter: "Saved filter",
+  filterOrder: "Saved filter order",
   statusColor: "Status colour",
   columns: "Columns",
   assetTag: "Asset tag",

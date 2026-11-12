@@ -158,13 +158,16 @@ document.documentElement.classList.toggle("dark", params.get("theme") === "dark"
 const root = document.getElementById("root");
 if (!root) throw new Error("Missing test root");
 
-if (params.get("mode") === "assets" || listMode) {
+if (params.get("mode") === "assets" || params.get("mode") === "presets" || listMode) {
   if (listMode) mockIPC((command, payload) => {
     if (command !== "plugin:dialog|save") throw new Error(`Unexpected fixture command: ${command}`);
     saveDialogs.push(payload);
     return savePath;
   });
-  useSettings.setState({ schemaId: "1", objectTypeId: "1", columns: {}, rules: [], aqlPresets: [] });
+  useSettings.setState({
+    schemaId: "1", objectTypeId: "1", columns: {}, rules: [],
+    ...(params.get("mode") === "presets" ? {} : { aqlPresets: [] }),
+  });
   useUi.setState({ editing: null, staleAssets: {}, search: "", rawAql: "" });
   createRoot(root).render(
     <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>

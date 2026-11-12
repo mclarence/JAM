@@ -163,6 +163,7 @@ Key parts are joined with `:`, each encoded with `encodeURIComponent` semantics 
 | `selection` | `{cloudId, workspaceId, schemaId, objectTypeId}` — deferred while the workspace differs or a scan is active. Auto-resolves to local. |
 | `theme` | `"light"` or `"dark"`; system theme is absent. |
 | `filter:<id>` | `{name, aql}` |
+| `filterOrder` | `[filterId]`; unique string IDs in global chip order. Apply after filter records; retain listed local presets in remote order, then append unlisted local presets in their existing order. Unknown IDs do not create presets. |
 | `columns:<c>:<w>:<type>` | `{hidden: [attrId], order?: [attrId]}` |
 | `assetTag:<c>:<w>:<type>` | asset-tag configuration |
 | `referenceDisplay:<c>:<w>:<type>` | reference display field configuration |
@@ -173,6 +174,10 @@ Key parts are joined with `:`, each encoded with `encodeURIComponent` semantics 
 | `scanConfig:<c>:<w>:<type>` | `{lookups, actions, presetId?}`; default `{lookups:["__key__"], actions:[]}` is absent |
 | `scanPreset:<c>:<w>:<type>:<id>` | `{name, lookups, actions}` |
 | `scanSound` | `false`; enabled is absent |
+
+`filterOrder` belongs to the filters category alongside `filter`. Local preset arrays persist display order without a settings-schema change. Projection preserves the last order snapshot when the relative order of IDs common to the snapshot and local presets is unchanged; additions/deletions alone do not overwrite remote order. Fresh empty defaults without a snapshot omit this record. Removing the order record does not force a local reorder. Malformed arrays and duplicate IDs are rejected without mutating presets. Simultaneous reorders use the existing sync conflict review.
+
+This is an additive record: older clients leave it unmanaged and continue syncing individual filters without their order. Clients receiving no order retain existing insertion order; a newer client's first order record uses its current local array. No encryption, batch schema or protocol-version change is required.
 
 ### `desktop`
 

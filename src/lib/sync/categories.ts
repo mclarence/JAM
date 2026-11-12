@@ -4,7 +4,7 @@ export const SYNC_CATEGORIES = [
   { id: "connection", label: "Jira connection details" },
   { id: "selection", label: "Schema and object-type selection" },
   { id: "theme", label: "Theme" },
-  { id: "filters", label: "Saved filters" },
+  { id: "filters", label: "Saved filters and order" },
   { id: "columns", label: "Columns (visibility, order and desktop widths)" },
   { id: "assetTags", label: "Asset tags" },
   { id: "referenceDisplay", label: "Reference-display fields" },
@@ -23,7 +23,7 @@ export const ALL_CATEGORIES: SyncCategory[] = SYNC_CATEGORIES.map((c) => c.id);
 export const DEFAULT_CATEGORIES: SyncCategory[] = ALL_CATEGORIES.filter((c) => c !== "reports");
 export const CATEGORY_RECORDS: Record<string, Record<string, SyncCategory>> = {
   shared: {
-    connection: "connection", selection: "selection", theme: "theme", filter: "filters", columns: "columns",
+    connection: "connection", selection: "selection", theme: "theme", filter: "filters", filterOrder: "filters", columns: "columns",
     assetTag: "assetTags", referenceDisplay: "referenceDisplay", statusColor: "statusColors",
     rule: "rules", ruleOrder: "rules", deletion: "deletions",
     scanConfig: "quickScan", scanPreset: "quickScan", scanSound: "quickScan",

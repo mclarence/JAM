@@ -82,9 +82,23 @@ describe("per-device sync categories", () => {
     d.base.values.set("shared|theme", "dark");
     d.base.values.set("shared|columns:c:w:42", { order: ["a"] });
     d.base.values.set("shared|filter:f", { name: "F", aql: "x" });
+    d.base.values.set("shared|filterOrder", ["f"]);
     capture(d.state, d.adapter.project(), d.adapter, ctx);
     expect(d.state.pending).toHaveLength(3);
     for (const b of d.state.pending) expect(new Set(b.body.records.map((r) => categoryOf(`${b.scope}|${r.key}`))).size).toBe(1);
+  });
+
+  it("excludes filter ordering from projection, application and pending uploads when filters are disabled", async () => {
+    const d = device("desktop", ["theme"]);
+    d.base.values.set("shared|filterOrder", ["local"]);
+    capture(d.state, d.base.project(), d.base, ctx);
+    expect(d.adapter.project().has("shared|filterOrder")).toBe(false);
+    expect(d.adapter.apply([{ rid: "shared|filterOrder", value: ["remote"], parents: [] }])).toEqual([{ status: "deferred" }]);
+    const drive = new Drive();
+    await pushPending(d.state, drive.transport, save, (rid) => d.adapter.isManaged(rid));
+    expect(drive.batches).toEqual([]);
+    expect(d.base.values.get("shared|filterOrder")).toEqual(["local"]);
+    expect(d.state.pending).toHaveLength(1);
   });
 
   it("parks excluded pending records, partitions old mixed batches with fresh IDs, and retries idempotently", async () => {
