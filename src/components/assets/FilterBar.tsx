@@ -1,9 +1,9 @@
-import { useEffect, useState } from "react";
-import { BookmarkPlus, Code2, Filter, Plus, Trash2, X } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
+import { BookmarkPlus, Code2, Filter, ListFilter, Plus, Trash2, X } from "lucide-react";
 import type { ObjectTypeAttribute } from "@/api/types";
 import { Button } from "@/components/ui/button";
-import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { Input } from "@/components/ui/input";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Input, Textarea } from "@/components/ui/input";
 import {
   Popover,
   PopoverContent,
@@ -11,8 +11,7 @@ import {
 } from "@/components/ui/overlays";
 import { Label } from "@/components/ui/primitives";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { useDebounce } from "@/hooks/useDebounce";
-import { FILTER_OPERATORS, isTextarea, rulesToAql, type FilterOperator, type FilterRule } from "@/lib/aql";
+import { FILTER_OPERATORS, isTextarea, listFilterAttributes, listFilterToAql, parseListFilter, rulesToAql, SEARCH_KEY, type FilterOperator, type FilterRule } from "@/lib/aql";
 import { cn } from "@/lib/utils";
 import { useSettings } from "@/store/settings";
 import { useUi } from "@/store/ui";
@@ -20,15 +19,25 @@ import { useUi } from "@/store/ui";
 export function FilterBar({ attributes, error }: { attributes: ObjectTypeAttribute[]; error?: string | null }) {
   const { rawAql, setRawAql } = useUi();
   const [draft, setDraft] = useState(rawAql);
-  const debounced = useDebounce(draft, 300);
+  const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
-    if (debounced !== useUi.getState().rawAql) setRawAql(debounced);
-  }, [debounced, setRawAql]);
-
-  useEffect(() => {
+    if (timer.current) clearTimeout(timer.current);
+    timer.current = null;
     setDraft((d) => (d === rawAql ? d : rawAql));
   }, [rawAql]);
+
+  useEffect(() => () => {
+    if (timer.current) clearTimeout(timer.current);
+  }, []);
+
+  const applyAql = (aql: string, replaceSearch = false) => {
+    if (timer.current) clearTimeout(timer.current);
+    timer.current = null;
+    setDraft(aql);
+    if (replaceSearch) useUi.getState().replaceAssetFilter(aql);
+    else setRawAql(aql);
+  };
 
   return (
     <div className="mb-3 grid gap-1">
@@ -37,7 +46,16 @@ export function FilterBar({ attributes, error }: { attributes: ObjectTypeAttribu
           <Code2 className="pointer-events-none absolute left-2.5 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
           <Input
             value={draft}
-            onChange={(e) => setDraft(e.target.value)}
+            onChange={(e) => {
+              const next = e.target.value;
+              const previous = useUi.getState().rawAql;
+              setDraft(next);
+              if (timer.current) clearTimeout(timer.current);
+              timer.current = setTimeout(() => {
+                if (useUi.getState().rawAql === previous) setRawAql(next);
+                timer.current = null;
+              }, 300);
+            }}
             placeholder={'AQL filter, e.g. "Status" = "In Use" AND "Location" LIKE "Sydney"'}
             className={cn("pl-8 pr-8 font-mono text-xs", error && "border-destructive focus-visible:ring-destructive")}
             spellCheck={false}
@@ -46,21 +64,79 @@ export function FilterBar({ attributes, error }: { attributes: ObjectTypeAttribu
             <button
               type="button"
               aria-label="Clear AQL"
-              onClick={() => {
-                setDraft("");
-                setRawAql("");
-              }}
+              onClick={() => applyAql("")}
               className="absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
             >
               <X className="size-3.5" />
             </button>
           )}
         </div>
-        <FilterBuilder attributes={attributes.filter((a) => !isTextarea(a))} onApply={(aql) => setRawAql(aql)} />
+        <ListFilterDialog attributes={attributes} onApply={(aql) => applyAql(aql, true)} />
+        <FilterBuilder attributes={attributes.filter((a) => !isTextarea(a))} onApply={applyAql} />
       </div>
-      <Presets current={rawAql} onApply={setRawAql} />
+      <Presets current={rawAql} onApply={applyAql} />
       {error && <p className="px-1 text-xs text-destructive select-text">{error}</p>}
     </div>
+  );
+}
+
+function ListFilterDialog({ attributes, onApply }: { attributes: ObjectTypeAttribute[]; onApply: (aql: string) => void }) {
+  const [open, setOpen] = useState(false);
+  const [field, setField] = useState(SEARCH_KEY);
+  const [mode, setMode] = useState<"exact" | "contains">("exact");
+  const [input, setInput] = useState("");
+  const fields = listFilterAttributes(attributes);
+  const selected = fields.find((attr) => attr.id === field);
+  const values = parseListFilter(input);
+  const validField = field === SEARCH_KEY || !!selected;
+
+  return (
+    <Dialog open={open} onOpenChange={setOpen}>
+      <Button variant="outline" size="sm" onClick={() => setOpen(true)}>
+        <ListFilter /> Paste list
+      </Button>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>Filter by list</DialogTitle>
+          <DialogDescription>Paste one value per line. Applying replaces the current search and AQL filter.</DialogDescription>
+        </DialogHeader>
+        <div className="grid gap-3">
+          <div className="grid gap-2">
+            <Label htmlFor="list-filter-field">Field</Label>
+            <Select value={field} onValueChange={setField}>
+              <SelectTrigger id="list-filter-field"><SelectValue placeholder="Choose a field" /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value={SEARCH_KEY}>Key</SelectItem>
+                {fields.map((attr) => <SelectItem key={attr.id} value={attr.id}>{attr.name}</SelectItem>)}
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="grid gap-2">
+            <Label htmlFor="list-filter-mode">Match</Label>
+            <Select value={mode} onValueChange={(value) => setMode(value === "contains" ? "contains" : "exact")}>
+              <SelectTrigger id="list-filter-mode"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="exact">Exact</SelectItem>
+                <SelectItem value="contains">Contains</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="grid gap-2">
+            <Label htmlFor="list-filter-values">Values</Label>
+            <Textarea id="list-filter-values" rows={8} value={input} onChange={(event) => setInput(event.target.value)} placeholder={"Value 1\nValue 2"} />
+            <p className="text-xs text-muted-foreground" aria-live="polite">{values.length.toLocaleString()} distinct values</p>
+            {!validField && <p role="alert" className="text-xs text-destructive">Choose a field available on this object type.</p>}
+          </div>
+        </div>
+        <DialogFooter>
+          <Button variant="outline" onClick={() => setOpen(false)}>Cancel</Button>
+          <Button disabled={!validField || values.length === 0} onClick={() => {
+            onApply(listFilterToAql(field === SEARCH_KEY ? SEARCH_KEY : selected!.name, values, mode));
+            setOpen(false);
+          }}>Apply</Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }
 

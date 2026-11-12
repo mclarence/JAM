@@ -5,7 +5,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { Toaster } from "sonner";
 import { assetsApi } from "../../../src/api/assets";
 import { connectionApi, fileApi } from "../../../src/api/client";
-import { AttrType, type AssetObject, type ConnectionInfo, type ObjectTypeAttribute } from "../../../src/api/types";
+import { AttrType, DefaultType, type AssetObject, type ConnectionInfo, type ObjectTypeAttribute } from "../../../src/api/types";
 import { ExportAssetsDialog } from "../../../src/components/assets/ExportAssetsDialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../../../src/components/ui/select";
 import { AssetsPage } from "../../../src/pages/AssetsPage";
@@ -21,8 +21,8 @@ const connection: ConnectionInfo = {
   email: "test@example.invalid",
 };
 const attributes: ObjectTypeAttribute[] = [
-  { id: "name", name: "Name", type: AttrType.Default, label: true },
-  { id: "room", name: "Room", type: AttrType.Default },
+  { id: "name", name: "Name", type: AttrType.Default, label: true, defaultType: { id: DefaultType.Text, name: "Text" } },
+  { id: "room", name: "Room", type: AttrType.Default, defaultType: { id: DefaultType.Text, name: "Text" } },
 ];
 const objects: AssetObject[] = ["Lab", "Office"].map((room, index) => {
   const id = String(index + 1);
@@ -41,6 +41,8 @@ const objects: AssetObject[] = ["Lab", "Office"].map((room, index) => {
 });
 
 const searches: { query: string; startAt: number }[] = [];
+const counts: string[] = [];
+const completedPages: number[] = [];
 const requestedIds: string[] = [];
 const returnedIds: string[] = [];
 const writes: { path: string; content: string }[] = [];
@@ -49,9 +51,31 @@ let readError: string | undefined;
 let waitForRead: Promise<void> | undefined;
 let releaseRead: (() => void) | undefined;
 let savePath: string | null = "/fixture/assets.csv";
+let listError: string | undefined;
+const params = new URLSearchParams(location.search);
+const listMode = params.get("mode") === "list";
+let releasePage: (() => void) | undefined;
+const pageWait = params.has("pausePage")
+  ? new Promise<void>((resolve) => { releasePage = resolve; })
+  : undefined;
+
+function listMatches(query: string) {
+  if (!listMode) return objects;
+  const clauses = [...query.matchAll(/(Key|"Name"|"Room") (LIKE|=) ("(?:\\.|[^"\\])*")/g)];
+  if (!clauses.length) return objects;
+  return objects.filter((object) => clauses.some(([, field, operator, quoted]) => {
+    const value = JSON.parse(quoted) as string;
+    const actual = field === "Key" ? object.objectKey
+      : object.attributes.find((attribute) => attribute.objectTypeAttributeId === field.slice(1, -1).toLowerCase())
+        ?.objectAttributeValues[0]?.value ?? "";
+    return operator === "=" ? actual === value : actual.includes(value);
+  }));
+}
 
 const fixture = {
   searches,
+  counts,
+  completedPages,
   requestedIds,
   returnedIds,
   writes,
@@ -69,6 +93,14 @@ const fixture = {
     release();
   },
   setSavePath: (path: string | null) => { savePath = path; },
+  setSearch: (search: string) => useUi.getState().setSearch(search),
+  currentSearch: () => useUi.getState().search,
+  setListError: (message: string | undefined) => { listError = message; },
+  resumePage: () => {
+    if (!releasePage) throw new Error("No fixture page is paused");
+    releasePage();
+    releasePage = undefined;
+  },
 };
 
 export type ExportFixture = typeof fixture;
@@ -82,15 +114,23 @@ assetsApi.listSchemas = async () => [{ id: "1", name: "Test", objectSchemaKey: "
 assetsApi.listObjectTypes = async () => [type];
 assetsApi.getObjectTypeAttributes = async () => attributes;
 assetsApi.listStatusTypes = async () => [];
-assetsApi.countObjects = async () => objects.length;
+assetsApi.countObjects = async (query) => {
+  counts.push(query);
+  return listMatches(query).length;
+};
 assetsApi.searchObjects = async (query, startAt = 0, maxResults = 100) => {
   searches.push({ query, startAt });
-  const values = objects.slice(startAt, startAt + maxResults);
+  if (listError) throw new Error(listError);
+  if (startAt > 0 && pageWait) await pageWait;
+  completedPages.push(startAt);
+  const matches = listMatches(query);
+  const pageSize = listMode ? 1 : maxResults;
+  const values = matches.slice(startAt, startAt + pageSize);
   return structuredClone({
     startAt,
-    maxResults,
-    total: objects.length,
-    isLast: startAt + values.length >= objects.length,
+    maxResults: pageSize,
+    total: matches.length,
+    isLast: startAt + values.length >= matches.length,
     values,
   });
 };
@@ -103,7 +143,7 @@ assetsApi.searchExportObjects = async (query, startAt = 0, selected = false) => 
     throw new Error(message);
   }
   const ids = selected ? query.match(/\(([^)]+)\)/)![1].split(",") : undefined;
-  const matches = objects.filter((object) => !ids || ids.includes(object.id));
+  const matches = (selected ? objects : listMatches(query)).filter((object) => !ids || ids.includes(object.id));
   const values = matches.slice(startAt, startAt + 100);
   returnedIds.push(...values.map((object) => object.id));
   return structuredClone({ startAt, maxResults: 100, total: matches.length, isLast: startAt + values.length >= matches.length, values });
@@ -114,13 +154,17 @@ assetsApi.getObject = async (id) => {
 };
 fileApi.saveCsv = async (path, content) => { writes.push({ path, content }); };
 
-const params = new URLSearchParams(location.search);
 document.documentElement.classList.toggle("dark", params.get("theme") === "dark");
 const root = document.getElementById("root");
 if (!root) throw new Error("Missing test root");
 
-if (params.get("mode") === "assets") {
-  useSettings.setState({ schemaId: "1", objectTypeId: "1", columns: {}, rules: [] });
+if (params.get("mode") === "assets" || listMode) {
+  if (listMode) mockIPC((command, payload) => {
+    if (command !== "plugin:dialog|save") throw new Error(`Unexpected fixture command: ${command}`);
+    saveDialogs.push(payload);
+    return savePath;
+  });
+  useSettings.setState({ schemaId: "1", objectTypeId: "1", columns: {}, rules: [], aqlPresets: [] });
   useUi.setState({ editing: null, staleAssets: {}, search: "", rawAql: "" });
   createRoot(root).render(
     <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>

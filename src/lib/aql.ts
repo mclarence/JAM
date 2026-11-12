@@ -30,6 +30,25 @@ export function isTextSearchable(attr: ObjectTypeAttribute) {
 export const SEARCH_ALL = "__all__";
 export const SEARCH_KEY = "__key__";
 
+export function listFilterAttributes(attributes: ObjectTypeAttribute[]) {
+  return attributes.filter((attr) =>
+    !attr.hidden && isTextSearchable(attr) && attr.name.trim().toLowerCase() !== "key",
+  );
+}
+
+export function parseListFilter(input: string) {
+  return [...new Set(input.split(/\r\n|\r|\n/).map((value) => value.trim()).filter(Boolean))];
+}
+
+export function listFilterToAql(field: string, values: string[], mode: "exact" | "contains") {
+  if (!field || values.length === 0 || values.some((value) => !value)) {
+    throw new Error("Choose a field and enter at least one value.");
+  }
+  const attr = field === SEARCH_KEY ? "Key" : aqlAttr(field);
+  const operator = mode === "exact" ? "=" : "LIKE";
+  return `(${values.map((value) => `${attr} ${operator} ${aqlString(value)}`).join(" OR ")})`;
+}
+
 const EXACT_MATCH_DEFAULT_TYPES = new Set<number>([
   DefaultType.Integer,
   DefaultType.Boolean,

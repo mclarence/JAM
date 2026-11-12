@@ -32,6 +32,7 @@ A cross-platform desktop app (Windows, macOS, Linux) for managing IT assets stor
 - Clear cell highlights with **Escape**, **Clear highlights**, or a plain click outside them. Starting a modifier-drag in another column replaces the selection; changing the search, filter, sort, object type or connection, leaving the page, or hiding the selected column clears it. During editing, Escape cancels the editor without saving; a second Escape clears highlights. A changed table context disables retries of a previous failed batch.
 - **Column drawer**: show, hide and reorder columns; preferences persist.
 - **Search and filtering**: global quick search, an attribute filter builder, and a raw **AQL** (Assets Query Language) input. AQL filters can be saved as named presets.
+- **Paste list**: choose Key or a visible text-like attribute and exact or contains matching, then paste one value per line. Surrounding whitespace, blank lines and exact duplicates are removed; commas remain part of a value. Applying replaces the current search and AQL filter and matches any listed value across all results. Matching and case sensitivity follow Jira AQL; unsupported operations and oversized queries are reported by Jira. Save the resulting AQL as a preset to reuse it; saved lists are edited as AQL and may be included in settings sync and backups.
 - **Status colour-coding**: status values render as badges whose colours you can map per status name.
 
 ### Dashboard

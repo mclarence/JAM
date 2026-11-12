@@ -38,6 +38,7 @@ interface UiState {
   setSearchField: (field: string) => void;
   setPreviewObjectId: (id: string | null) => void;
   setRawAql: (aql: string) => void;
+  replaceAssetFilter: (aql: string) => void;
   setEditing: (cell: EditingCell | null) => void;
   openDetail: (objectId: string | null) => void;
   pushNotification: (n: Omit<Notification, "id" | "at">) => void;
@@ -71,6 +72,7 @@ export const useUi = create<UiState>((set) => ({
   setSearchField: (searchField) => set({ searchField }),
   setPreviewObjectId: (previewObjectId) => set({ previewObjectId }),
   setRawAql: (rawAql) => set({ rawAql }),
+  replaceAssetFilter: (rawAql) => set({ search: "", rawAql }),
   setEditing: (editing) => set({ editing }),
   openDetail: (detailObjectId) => set({ detailObjectId }),
   pushNotification: (n) =>

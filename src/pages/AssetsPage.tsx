@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import type { ColumnSizingState, RowSelectionState, SortingState, VisibilityState } from "@tanstack/react-table";
 import { Database, Download, Loader2, PlugZap, Plus, RefreshCw } from "lucide-react";
@@ -72,19 +72,19 @@ export function AssetsPage() {
       objectTypeId && attrsQuery.isSuccess
         ? buildAssetsQuery({
             objectTypeId,
-            search: debouncedSearch,
+            search: search ? debouncedSearch : "",
             searchField,
             rawAql,
             attributes,
             sort: sortAttr ? { attrName: sortAttr.name, desc: sorting[0].desc } : null,
           })
         : null,
-    [objectTypeId, attrsQuery.isSuccess, debouncedSearch, searchField, rawAql, attributes, sortAttr, sorting],
+    [objectTypeId, attrsQuery.isSuccess, search, debouncedSearch, searchField, rawAql, attributes, sortAttr, sorting],
   );
 
   const objects = useAssetsInfinite(query?.full ?? null);
   const total = useTotalCount(query?.where ?? null);
-  const rows = useMemo(() => objects.data?.pages.flatMap((p) => p.values) ?? [], [objects.data]);
+  const rows = useMemo(() => objects.isPlaceholderData ? [] : objects.data?.pages.flatMap((p) => p.values) ?? [], [objects.data, objects.isPlaceholderData]);
 
   useEffect(() => setRowSelection({}), [query?.where, visibility]);
   useEffect(() => setRowSelection((previous) => {
@@ -137,6 +137,8 @@ export function AssetsPage() {
   const deletionConfig = connection.data && objectTypeId ? deletions[deletionScope(connection.data, objectTypeId)] : undefined;
   const exportContext = JSON.stringify([query?.full, search, searchField, rawAql, schemaId, objectTypeId, connection.data, visibility]);
   const selectionContext = JSON.stringify([exportContext, sorting]);
+  const selectionContextRef = useRef(selectionContext);
+  selectionContextRef.current = selectionContext;
   const bulk = useInlineBulkUpdate(selectionContext, attributes);
   useEffect(() => setExportOpen(false), [exportContext]);
   const exportReady = !!query && !!connection.data && attrsQuery.isSuccess && !objects.isPending &&
@@ -144,6 +146,7 @@ export function AssetsPage() {
   const findLoaded = useCallback((id: string) => rows.find((r) => r.id === id), [rows]);
 
   const selectAllMatching = async () => {
+    const startedContext = selectionContext;
     setSelectingAll(true);
     try {
       let data = objects.data;
@@ -155,7 +158,9 @@ export function AssetsPage() {
         more = next.hasNextPage;
       }
       const all: AssetObject[] = data?.pages.flatMap((p) => p.values) ?? [];
-      setRowSelection(Object.fromEntries(all.map((o) => [o.id, true])));
+      if (selectionContextRef.current === startedContext) {
+        setRowSelection(Object.fromEntries(all.map((o) => [o.id, true])));
+      }
     } catch (e) {
       notify.error(e, "Could not load all matching objects");
     } finally {
@@ -265,13 +270,13 @@ export function AssetsPage() {
         </div>
       )}
 
-      {objects.isLoading || attrsQuery.isLoading ? (
+      {objects.isLoading || objects.isPlaceholderData || attrsQuery.isLoading ? (
         <div className="grid gap-2">
           {Array.from({ length: 10 }).map((_, i) => (
             <Skeleton key={i} className="h-9" />
           ))}
         </div>
-      ) : rows.length === 0 && !objects.isFetching ? (
+      ) : queryError ? null : rows.length === 0 && !objects.isFetching ? (
         <EmptyState icon={<Database />} title="No objects match">
           Adjust the search or AQL filter.
         </EmptyState>
