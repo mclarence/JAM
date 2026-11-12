@@ -23,12 +23,19 @@ jobs:
       release_id: ${{ steps.release.outputs.release_id }}
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Compute nightly version
         id: version
         run: |
           base=$(jq -r .version src-tauri/tauri.conf.json | sed 's/-.*//')
           echo "version=${base}-nightly.${GITHUB_RUN_NUMBER}" >> "$GITHUB_OUTPUT"
+
+      - name: Generate nightly change log before replacing the previous tag
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: node .github/scripts/release-notes.mjs nightly "$VERSION" "$RUNNER_TEMP/nightly-notes.md"
 
       # Replaces the rolling release so latest.json only ever describes the newest build.
       - name: Recreate the nightly release
@@ -41,7 +48,7 @@ jobs:
             --prerelease \
             --target "$GITHUB_SHA" \
             --title "Nightly ${{ steps.version.outputs.version }}" \
-            --notes "Automated build of ${GITHUB_SHA} (${{ steps.version.outputs.version }})."
+            --notes-file "$RUNNER_TEMP/nightly-notes.md"
           id=$(gh api "repos/${GITHUB_REPOSITORY}/releases/tags/nightly" --jq .id)
           echo "release_id=${id}" >> "$GITHUB_OUTPUT"
 
@@ -138,6 +145,16 @@ jobs:
             exit 1
           fi
 
+      - name: Read release notes for the updater manifest
+        id: notes
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RELEASE_ID: ${{ needs.prepare.outputs.release_id }}
+        run: |
+          gh api "repos/${GITHUB_REPOSITORY}/releases/${RELEASE_ID}" > "$RUNNER_TEMP/release.json"
+          node .github/scripts/release-notes.mjs output "$RUNNER_TEMP/release.json"
+
       - uses: tauri-apps/tauri-action@v1
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -150,12 +167,17 @@ jobs:
         with:
           tauriScript: pnpm tauri
           releaseId: ${{ needs.prepare.outputs.release_id }}
+          releaseBody: ${{ steps.notes.outputs.body }}
           # Without tagName, latest.json would link to /releases/latest/, which never points at a prerelease.
           tagName: nightly
           prerelease: true
           uploadUpdaterJson: true
           updaterJsonPreferNsis: true
           args: ${{ matrix.args }}
+
+      - name: Verify updater release notes
+        shell: bash
+        run: node .github/scripts/release-notes.mjs verify latest.json "$RUNNER_TEMP/release.json"
 
       - name: Clean up macOS signing
         if: always() && runner.os == 'macOS'

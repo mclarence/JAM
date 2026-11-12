@@ -250,6 +250,25 @@ This signing is separate from updater signing below. It does not provide Apple n
 
 ### Updater signing
 
+The desktop app shows release notes when it finds an update, while the download
+continues in the background. Dismiss the dialog to keep working, or reopen it
+from **Settings > Updates > View release notes** or the update notification.
+**Restart to update** becomes available when the download finishes.
+
+Before an in-app installation, JAM saves the target version and release notes
+locally. On the first launch of that version, **What's New** shows those notes,
+even offline. Dismissing it prevents it from appearing on later launches.
+This applies to updates initiated by a build supporting this feature; manual
+installations outside the app do not trigger it.
+
+Stable builds use their GitHub release notes. Nightly builds list commits since
+the previous nightly; if no comparable previous nightly is available, the notes
+explicitly label the limited current-commit summary. Both CI workflows pass the
+release body to the updater manifest and verify the notes match.
+Notes support Markdown headings, lists, and HTTP(S) links opened in the system
+browser; embedded HTML and remote images are not loaded. Missing notes are
+explicitly indicated and do not prevent updating.
+
 Release builds are signed for the auto-updater. Generate your own key pair and replace `plugins.updater.pubkey` in [src-tauri/tauri.conf.json](src-tauri/tauri.conf.json):
 
 ```sh

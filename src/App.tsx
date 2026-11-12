@@ -1,4 +1,5 @@
 import { lazy, Suspense, useEffect, useState } from "react";
+import { isTauri } from "@tauri-apps/api/core";
 import { Loader2 } from "lucide-react";
 import { useGlobalHotkeys } from "@/hooks/useGlobalHotkeys";
 import { useAutoUpdate } from "@/hooks/useAutoUpdate";
@@ -16,6 +17,7 @@ import { AssetsPage } from "@/pages/AssetsPage";
 import { QuickScanPage } from "@/pages/QuickScanPage";
 import { TemplatesPage } from "@/pages/TemplatesPage";
 import { SettingsPage } from "@/pages/SettingsPage";
+import { UpdateNotesDialog } from "@/components/updates/UpdateNotesDialog";
 
 // Charts and the report builder load on first use.
 const ReportsPage = lazy(() => import("@/pages/ReportsPage").then((m) => ({ default: m.ReportsPage })));
@@ -45,6 +47,10 @@ export default function App() {
   }, [ready]);
 
   useEffect(() => {
+    if (ready && isTauri()) void useUpdater.getState().initialize();
+  }, [ready]);
+
+  useEffect(() => {
     const mq = window.matchMedia("(max-width: 1199px)");
     const sync = () => mq.matches && useUi.getState().setSidebarCollapsed(true);
     sync();
@@ -70,6 +76,7 @@ export default function App() {
           {ready && page === "settings" && <SettingsPage />}
         </main>
       </div>
+      {ready && <UpdateNotesDialog />}
     </div>
   );
 }

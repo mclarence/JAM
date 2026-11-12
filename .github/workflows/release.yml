@@ -134,6 +134,16 @@ jobs:
             exit 1
           fi
 
+      - name: Read release notes for the updater manifest
+        id: notes
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RELEASE_ID: ${{ needs.prepare.outputs.release_id }}
+        run: |
+          gh api "repos/${GITHUB_REPOSITORY}/releases/${RELEASE_ID}" > "$RUNNER_TEMP/release.json"
+          node .github/scripts/release-notes.mjs output "$RUNNER_TEMP/release.json"
+
       - uses: tauri-apps/tauri-action@v1
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -146,11 +156,16 @@ jobs:
         with:
           tauriScript: pnpm tauri
           releaseId: ${{ needs.prepare.outputs.release_id }}
+          releaseBody: ${{ steps.notes.outputs.body }}
           tagName: ${{ github.ref_name }}
           releaseDraft: true
           uploadUpdaterJson: true
           updaterJsonPreferNsis: true
           args: ${{ matrix.args }}
+
+      - name: Verify updater release notes
+        shell: bash
+        run: node .github/scripts/release-notes.mjs verify latest.json "$RUNNER_TEMP/release.json"
 
       - name: Clean up macOS signing
         if: always() && runner.os == 'macOS'

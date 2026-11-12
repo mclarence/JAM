@@ -14,14 +14,14 @@ function formatMb(bytes: number) {
 
 export function UpdatesTab() {
   const { channel, autoCheck, status, available, progress, error, lastChecked } = useUpdater();
-  const { setChannel, setAutoCheck, checkAndDownload, install } = useUpdater.getState();
+  const { setChannel, setAutoCheck, checkAndDownload, install, showNotes } = useUpdater.getState();
   const [version, setVersion] = useState<string | null>(null);
 
   useEffect(() => {
     if (isTauri()) void getVersion().then(setVersion);
   }, []);
 
-  const busy = status === "checking" || status === "downloading";
+  const busy = status === "checking" || status === "downloading" || status === "installing";
   const percent = progress?.total ? Math.min(100, Math.round((progress.downloaded / progress.total) * 100)) : null;
 
   const changeChannel = (value: UpdateChannel) => {
@@ -38,7 +38,7 @@ export function UpdatesTab() {
 
       <div className="grid gap-2">
         <Label>Update channel</Label>
-        <Select value={channel} onValueChange={(v) => changeChannel(v as UpdateChannel)}>
+        <Select value={channel} disabled={status === "installing"} onValueChange={(v) => changeChannel(v as UpdateChannel)}>
           <SelectTrigger>
             <SelectValue />
           </SelectTrigger>
@@ -93,6 +93,8 @@ export function UpdatesTab() {
               />
             </div>
           </>
+        ) : status === "installing" ? (
+          <p>Installing update...</p>
         ) : status === "checking" ? (
           <p className="flex items-center gap-2">
             <Loader2 className="size-4 animate-spin" /> Checking for updates
@@ -105,6 +107,11 @@ export function UpdatesTab() {
           </p>
         )}
         {lastChecked && <p className="text-xs text-muted-foreground">Last checked {new Date(lastChecked).toLocaleString()}</p>}
+        {available && (
+          <div>
+            <Button variant="outline" size="sm" onClick={showNotes}>View release notes</Button>
+          </div>
+        )}
         <div>
           <Button
             variant="outline"
